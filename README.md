@@ -15,6 +15,11 @@ arm today. It is the baseline and the infrastructure for an RL policy trained in
 
 ## Demo
 
+| Follows the red cube as it's dragged (real time) | Full cycle while both cubes are moved (2× speed) |
+|---|---|
+| [![The arm hovers over the red cube and follows it as a hand drags it around](docs/media/follow_red.gif)](docs/media/follow_red.mp4) | [![The arm follows red, picks it, follows green while a hand moves it, and stacks red on green](docs/media/full_cycle.gif)](docs/media/full_cycle.mp4) |
+| [Full video](docs/media/follow_red.mp4) | [Full video](docs/media/full_cycle.mp4): follows red, picks it the moment it rests, follows green while it is moved, stacks, then re-stacks after the top cube is taken off |
+
 | Real camera: cubes placed close together, tracked live | ...and stacked by the arm |
 |---|---|
 | ![Live tracking of red and green cubes placed close together](docs/media/real_before_stack.jpg) | ![The arm has stacked red on green](docs/media/real_after_stack.jpg) |
