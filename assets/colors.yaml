@@ -1,0 +1,21 @@
+# Cube colors for the lab D455 with auto exposure and white balance fixed at 3000 K, measured on
+# 2026-10-16. OpenCV HSV: H 0-179, S and V 0-255. The table stays below S 41; every cube is above 86.
+# Green (H 78-82) and cyan (90-93) are the tight pair: re-tune with scripts/tune_colors.py if the
+# lighting or white balance changes.
+red:
+  hsv_ranges:
+  - [[0, 70, 30], [6, 255, 255]]
+  - [[170, 70, 30], [179, 255, 255]]
+  bgr: [40, 40, 230]
+yellow:
+  hsv_ranges:
+  - [[15, 70, 50], [34, 255, 255]]
+  bgr: [40, 220, 240]
+green:
+  hsv_ranges:
+  - [[65, 90, 30], [85, 255, 255]]
+  bgr: [60, 200, 60]
+cyan:
+  hsv_ranges:
+  - [[86, 120, 40], [102, 255, 255]]  # walls and the monitor read S 80-104 here; the cube is >= 134
+  bgr: [220, 220, 40]
