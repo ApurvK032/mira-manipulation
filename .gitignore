@@ -1,0 +1,13 @@
+runs/
+recordings/
+assets/m3t_models/
+third_party/
+__pycache__/
+*.pyc
+docs/snapshots/
+docs/camera_check/
+*.egg-info/
+.vscode/
+.idea/
+.DS_Store
+*.log

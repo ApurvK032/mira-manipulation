@@ -1,0 +1,29 @@
+# conda-forge environment for perception, simulation and hardware tools.
+# Needs no root: compilers, GL and camera libraries all come from conda-forge.
+# Create with scripts/setup_env.sh (it also builds pym3t).
+name: rlwx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - compilers
+  - cmake
+  - ninja
+  - make
+  - pkg-config
+  - eigen=3.4          # M3T requires Eigen 3 (conda-forge default is 5)
+  - glew
+  - glfw
+  - opencv>=4.10,<5   # M3T is written against OpenCV 4
+  - librealsense
+  - libgl-devel
+  - numpy
+  - scipy
+  - pyyaml
+  - matplotlib
+  - scikit-build-core
+  - pip
+  - pip:
+      - mujoco
+      - imageio
+      - trossen-arm==1.8.3  # must match the arm controller firmware (lab arm: 1.8.3)
