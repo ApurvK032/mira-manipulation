@@ -7,4 +7,8 @@ other form, without the prior written permission of the copyright holder.
 Viewing the code on GitHub, and forking it within GitHub as GitHub's Terms of Service allow,
 does not grant any of these rights.
 
+Exception: assets/trossen_arm_mujoco/ is Trossen Robotics' MuJoCo model of the WidowX AI. It is
+distributed under its own BSD 3-Clause license (assets/LICENSE.trossen_arm_mujoco), which
+continues to apply to those files.
+
 To ask for permission, open an issue at https://github.com/ApurvK032/mira-manipulation.
