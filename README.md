@@ -35,6 +35,8 @@ Simulation tests of the perception (MuJoCo, with D455-like noise): the tracker r
   <em>Calibration check: the arm's kinematic model (lines) projected onto the camera image after the 2.1 mm RMS fit.</em>
 </p>
 
+## Results
+
 | | |
 |---|---|
 | Perception | 6D poses of both cubes at **~60 fps**, ~8 ms compute per frame; a moved cube is re-found in 0–1 frames |
