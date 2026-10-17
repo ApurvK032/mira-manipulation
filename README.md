@@ -29,12 +29,6 @@ compute per frame (detect / track / check shown at the bottom).
 Simulation tests of the perception (MuJoCo, with D455-like noise): the tracker re-finds moved cubes within
 0 to 1 frames and never reports a wrong pose as `TRACKING` ([details](docs/poc/README.md)).
 
-<p align="center">
-  <img src="docs/calibration/new_calibration_arm_overlay.png" alt="Calibrated arm model projected onto the camera image" width="220">
-  <br>
-  <em>Calibration check: the arm's kinematic model (lines) projected onto the camera image after the 2.1 mm RMS fit.</em>
-</p>
-
 ## Results
 
 | | |
