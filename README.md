@@ -13,6 +13,28 @@ and checks every pose against the image before anything acts on it. A scripted c
 arm today. It is the baseline and the infrastructure for an RL policy trained in MuJoCo (see
 [Roadmap](#roadmap) and [PLAN.md](PLAN.md)).
 
+## Demo
+
+| Real camera: cubes placed close together, tracked live | ...and stacked by the arm |
+|---|---|
+| ![Live tracking of red and green cubes placed close together](docs/media/real_before_stack.jpg) | ![The arm has stacked red on green](docs/media/real_after_stack.jpg) |
+
+Live overlay from the D455: both cubes `TRACKING` with their 6D poses drawn as wireframes, about 12 ms of
+compute per frame (detect / track / check shown at the bottom).
+
+| Simulation: a hand picks up and moves a cube | A stack is knocked over | A cube is snatched away fast |
+|---|---|---|
+| ![Tracking while a hand picks and places a cube](docs/poc/hand_pick_place.gif) | ![Tracking through a stack being knocked over](docs/poc/stack_knock.gif) | ![Tracking a cube snatched away quickly](docs/poc/fast_snatch.gif) |
+
+Simulation tests of the perception (MuJoCo, with D455-like noise): the tracker re-finds moved cubes within
+0 to 1 frames and never reports a wrong pose as `TRACKING` ([details](docs/poc/README.md)).
+
+<p align="center">
+  <img src="docs/calibration/new_calibration_arm_overlay.png" alt="Calibrated arm model projected onto the camera image" width="220">
+  <br>
+  <em>Calibration check: the arm's kinematic model (lines) projected onto the camera image after the 2.1 mm RMS fit.</em>
+</p>
+
 | | |
 |---|---|
 | Perception | 6D poses of both cubes at **~60 fps**, ~8 ms compute per frame; a moved cube is re-found in 0–1 frames |
