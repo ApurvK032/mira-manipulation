@@ -1,0 +1,418 @@
+{
+ "config": {
+  "pipeline": "m3t_seed100",
+  "fps": 60.0,
+  "resolution": [
+   848,
+   480
+  ],
+  "perception_cpus": 8
+ },
+ "hand_pick_place": {
+  "frames": 442,
+  "cubes": {
+   "red": {
+    "frames": 442,
+    "states": {
+     "TRACKING": 395,
+     "LOST": 37,
+     "OCCLUDED": 10
+    },
+    "tracking_when_clearly_visible": 0.9973684210526316,
+    "pos_med": 0.43576335371300084,
+    "pos_p95": 0.8195332154139762,
+    "pos_max": 3.5086130680955354,
+    "rot_med": 0.5062583139751673,
+    "rot_p95": 1.1143843752047968,
+    "rot_max": 5.453527785328087
+   },
+   "blue": {
+    "frames": 442,
+    "states": {
+     "TRACKING": 360,
+     "LOST": 82
+    },
+    "tracking_when_clearly_visible": 1.0,
+    "pos_med": 0.5210142968343743,
+    "pos_p95": 1.0037396549748279,
+    "pos_max": 3.8882637518478065,
+    "rot_med": 0.5189852973371287,
+    "rot_p95": 0.99646785569453,
+    "rot_max": 3.2668593004331496
+   }
+  },
+  "events": [
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 1.90422136274289,
+    "peak_speed": 1.0,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 4.0720595366352486,
+    "peak_speed": 1.5,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 6.070339110125384,
+    "peak_speed": 2.0,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   }
+  ],
+  "wrong_tracking_frames": [],
+  "timing_ms": {
+   "total": {
+    "p50": 10.941934073343873,
+    "p95": 12.471983837895095,
+    "max": 15.584480948746204
+   },
+   "detect": {
+    "p50": 7.105764001607895,
+    "p95": 7.968505541794002,
+    "max": 10.896848049014807
+   },
+   "track": {
+    "p50": 2.0698419539257884,
+    "p95": 3.0743235722184177,
+    "max": 4.261806141585112
+   },
+   "check": {
+    "p50": 1.324750017374754,
+    "p95": 2.3089076159521937,
+    "max": 3.88684612698853
+   }
+  },
+  "wall_s": 39.86654350603931
+ },
+ "teleport": {
+  "frames": 420,
+  "cubes": {
+   "red": {
+    "frames": 420,
+    "states": {
+     "TRACKING": 418,
+     "LOST": 2
+    },
+    "tracking_when_clearly_visible": 0.9952380952380953,
+    "pos_med": 0.3638389513211666,
+    "pos_p95": 0.6596718600983904,
+    "pos_max": 1.0673425060346113,
+    "rot_med": 0.5181740944572378,
+    "rot_p95": 0.8899594155442887,
+    "rot_max": 1.2093850973881277
+   },
+   "blue": {
+    "frames": 420,
+    "states": {
+     "TRACKING": 417,
+     "LOST": 3
+    },
+    "tracking_when_clearly_visible": 0.9928571428571429,
+    "pos_med": 0.25084390403225304,
+    "pos_p95": 0.4513599796636552,
+    "pos_max": 0.7720269938768421,
+    "rot_med": 0.5862561102781417,
+    "rot_p95": 1.2625034726179356,
+    "rot_max": 1.9228433192478551
+   }
+  },
+  "events": [
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 0.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 1.8,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 2.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 3.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 4.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 5.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   }
+  ],
+  "wrong_tracking_frames": [],
+  "timing_ms": {
+   "total": {
+    "p50": 10.834570042788982,
+    "p95": 12.085849395953119,
+    "max": 14.131646952591836
+   },
+   "detect": {
+    "p50": 7.392207044176757,
+    "p95": 8.088956354185939,
+    "max": 9.402005933225155
+   },
+   "track": {
+    "p50": 2.040271880105138,
+    "p95": 2.477582602296023,
+    "max": 3.9125829935073853
+   },
+   "check": {
+    "p50": 1.0719200363382697,
+    "p95": 1.843996043317019,
+    "max": 2.3361070780083537
+   }
+  },
+  "wall_s": 26.281465210020542
+ },
+ "random_stress": {
+  "frames": 2390,
+  "cubes": {
+   "red": {
+    "frames": 2390,
+    "states": {
+     "TRACKING": 2008,
+     "LOST": 364,
+     "OCCLUDED": 18
+    },
+    "tracking_when_clearly_visible": 0.9832995951417004,
+    "pos_med": 0.2594831526385488,
+    "pos_p95": 2.6928741297108183,
+    "pos_max": 5.204325796601595,
+    "rot_med": 0.9022782569025858,
+    "rot_p95": 2.4999928932054365,
+    "rot_max": 8.94851121349458
+   },
+   "blue": {
+    "frames": 2390,
+    "states": {
+     "TRACKING": 2203,
+     "LOST": 186,
+     "OCCLUDED": 1
+    },
+    "tracking_when_clearly_visible": 0.9850475758948799,
+    "pos_med": 0.19226936384835008,
+    "pos_p95": 0.6405401855958605,
+    "pos_max": 6.113209052575472,
+    "rot_med": 0.3690106618758506,
+    "rot_p95": 1.2632042339188092,
+    "rot_max": 4.954109524316808
+   },
+   "green": {
+    "frames": 2390,
+    "states": {
+     "TRACKING": 2215,
+     "OCCLUDED": 40,
+     "LOST": 135
+    },
+    "tracking_when_clearly_visible": 0.9968094804010939,
+    "pos_med": 0.23036209313646633,
+    "pos_p95": 0.9309744763286851,
+    "pos_max": 5.791008349403721,
+    "rot_med": 0.3553106536517698,
+    "rot_p95": 1.4952337843064911,
+    "rot_max": 3.8881036696049374
+   },
+   "yellow": {
+    "frames": 2390,
+    "states": {
+     "TRACKING": 2165,
+     "OCCLUDED": 45,
+     "LOST": 180
+    },
+    "tracking_when_clearly_visible": 0.9897911832946635,
+    "pos_med": 0.2992277833132217,
+    "pos_p95": 0.6070396853830062,
+    "pos_max": 4.039974693509884,
+    "rot_med": 0.3648610543021352,
+    "rot_p95": 0.7767876824501452,
+    "rot_max": 2.9913002402988083
+   }
+  },
+  "events": [
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 1.6099999999999999,
+    "peak_speed": 2.47706982017481,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 4.715586991713301,
+    "peak_speed": 0.5415211482320195,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 6.787223834833857,
+    "peak_speed": 0.9926575546514411,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 9.4543771625787,
+    "peak_speed": 1.0244704067628176,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "yellow",
+    "t": 11.58375503280097,
+    "peak_speed": 0.5401091175271375,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "green",
+    "t": 13.587096436258536,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "teleport",
+    "cube": "yellow",
+    "t": 14.389169096507393,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "yellow",
+    "t": 17.08790935784118,
+    "peak_speed": 0.6014124652144971,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 19.31619421140335,
+    "peak_speed": 0.9403282954453649,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "blue",
+    "t": 21.160325912268434,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 23.62922153882815,
+    "peak_speed": 0.7334628765828108,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "red",
+    "t": 25.85715831822956,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 28.221492362575475,
+    "peak_speed": 2.218137943523164,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "yellow",
+    "t": 30.656571167106303,
+    "peak_speed": 0.7120409729289416,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 33.761340397290546,
+    "peak_speed": 0.7596656653946986,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "red",
+    "t": 35.507661831776765,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 37.817829830084115,
+    "peak_speed": 2.345092838535286,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   }
+  ],
+  "wrong_tracking_frames": [],
+  "timing_ms": {
+   "total": {
+    "p50": 18.729738891124725,
+    "p95": 22.24464036989957,
+    "max": 47.30217601172626
+   },
+   "detect": {
+    "p50": 10.06529398728162,
+    "p95": 11.11935519147664,
+    "max": 16.078941989690065
+   },
+   "track": {
+    "p50": 4.106552107259631,
+    "p95": 5.385678284801542,
+    "max": 8.622365072369576
+   },
+   "check": {
+    "p50": 4.013436031527817,
+    "p95": 6.866534310393027,
+    "max": 11.860006139613688
+   }
+  },
+  "wall_s": 212.30215034703724
+ }
+}

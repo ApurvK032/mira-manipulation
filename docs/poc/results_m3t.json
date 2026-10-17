@@ -1,0 +1,443 @@
+{
+ "config": {
+  "pipeline": "m3t",
+  "fps": 60.0,
+  "resolution": [
+   848,
+   480
+  ],
+  "perception_cpus": 8
+ },
+ "teleport": {
+  "frames": 420,
+  "cubes": {
+   "red": {
+    "frames": 420,
+    "states": {
+     "TRACKING": 418,
+     "LOST": 2
+    },
+    "tracking_when_clearly_visible": 0.9952380952380953,
+    "pos_med": 0.2990052645448542,
+    "pos_p95": 0.5443761286149684,
+    "pos_max": 78.93394129817246,
+    "rot_med": 0.5659329507083571,
+    "rot_p95": 1.6020114049327914,
+    "rot_max": 34.9400933222378
+   },
+   "blue": {
+    "frames": 420,
+    "states": {
+     "TRACKING": 417,
+     "LOST": 3
+    },
+    "tracking_when_clearly_visible": 0.9928571428571429,
+    "pos_med": 0.3426816847254242,
+    "pos_p95": 0.6269103765534465,
+    "pos_max": 1.3630991426439596,
+    "rot_med": 0.5436093790914011,
+    "rot_p95": 0.9784917879722267,
+    "rot_max": 1.8669737918003528
+   }
+  },
+  "events": [
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 0.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 1.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 2.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 3.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "blue",
+    "t": 4.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   },
+   {
+    "kind": "teleport",
+    "cube": "red",
+    "t": 5.8,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   }
+  ],
+  "wrong_tracking_frames": [
+   {
+    "frame": 228,
+    "cube": "red",
+    "pos_err": 78.93394129817246,
+    "rot_err": 34.9400933222378,
+    "vis": 1.0,
+    "source": "track"
+   }
+  ],
+  "timing_ms": {
+   "total": {
+    "p50": 9.035348999987036,
+    "p95": 11.767966400020669,
+    "max": 14.620027000091795
+   },
+   "detect": {
+    "p50": 5.937409000125626,
+    "p95": 7.684419199949842,
+    "max": 10.076948000005359
+   },
+   "track": {
+    "p50": 1.9008600002052845,
+    "p95": 2.5145989999145963,
+    "max": 3.745558999980858
+   },
+   "check": {
+    "p50": 1.0204130003330647,
+    "p95": 1.4914974998191606,
+    "max": 2.145874000234471
+   }
+  },
+  "wall_s": 35.22089416500012
+ },
+ "stack_knock": {
+  "frames": 379,
+  "cubes": {
+   "red": {
+    "frames": 379,
+    "states": {
+     "TRACKING": 369,
+     "LOST": 10
+    },
+    "tracking_when_clearly_visible": 0.9736147757255936,
+    "pos_med": 0.40580044235501567,
+    "pos_p95": 3.6231088641934655,
+    "pos_max": 4.582072895096108,
+    "rot_med": 1.3111654479260104,
+    "rot_p95": 2.6796211587659755,
+    "rot_max": 3.278351297786615
+   },
+   "blue": {
+    "frames": 379,
+    "states": {
+     "TRACKING": 322,
+     "LOST": 57
+    },
+    "tracking_when_clearly_visible": 0.9968354430379747,
+    "pos_med": 0.2513676128901182,
+    "pos_p95": 0.7588176350886127,
+    "pos_max": 5.09921819469301,
+    "rot_med": 0.4946800354409047,
+    "rot_p95": 0.9691293994415577,
+    "rot_max": 13.49367084972785
+   }
+  },
+  "events": [
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 1.9209335740958187,
+    "peak_speed": 1.0,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "stacked",
+    "cube": "blue",
+    "t": 2.3209335740958186
+   },
+   {
+    "kind": "knock",
+    "cube": "blue",
+    "t": 4.7209335740958185,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   }
+  ],
+  "wrong_tracking_frames": [
+   {
+    "frame": 262,
+    "cube": "blue",
+    "pos_err": 5.09921819469301,
+    "rot_err": 13.49367084972785,
+    "vis": 0.788130185067007,
+    "source": "track"
+   }
+  ],
+  "timing_ms": {
+   "total": {
+    "p50": 9.087329499834595,
+    "p95": 11.663099599991256,
+    "max": 14.187218000188295
+   },
+   "detect": {
+    "p50": 5.693937999922127,
+    "p95": 6.759686799887276,
+    "max": 8.51216499995644
+   },
+   "track": {
+    "p50": 1.7311939998307935,
+    "p95": 2.380205400140767,
+    "max": 4.139891999784595
+   },
+   "check": {
+    "p50": 1.3927524998962326,
+    "p95": 2.3212196003214554,
+    "max": 3.7742560002698156
+   }
+  },
+  "wall_s": 41.75834971999984
+ },
+ "random_stress": {
+  "frames": 2400,
+  "cubes": {
+   "red": {
+    "frames": 2400,
+    "states": {
+     "TRACKING": 2240,
+     "LOST": 126,
+     "OCCLUDED": 34
+    },
+    "tracking_when_clearly_visible": 0.9906040268456375,
+    "pos_med": 0.26384336679859033,
+    "pos_p95": 2.6190019215771696,
+    "pos_max": 9.16078728243569,
+    "rot_med": 0.5535635023874931,
+    "rot_p95": 1.7272269056663547,
+    "rot_max": 10.335044856926105
+   },
+   "blue": {
+    "frames": 2400,
+    "states": {
+     "TRACKING": 2223,
+     "OCCLUDED": 47,
+     "LOST": 130
+    },
+    "tracking_when_clearly_visible": 1.0,
+    "pos_med": 0.17533302253873276,
+    "pos_p95": 0.45957544058118643,
+    "pos_max": 5.679941698946784,
+    "rot_med": 0.566339953781325,
+    "rot_p95": 0.8887205103616272,
+    "rot_max": 4.962032009178851
+   },
+   "green": {
+    "frames": 2400,
+    "states": {
+     "TRACKING": 2075,
+     "LOST": 273,
+     "OCCLUDED": 52
+    },
+    "tracking_when_clearly_visible": 0.9969635627530364,
+    "pos_med": 0.3301477615931303,
+    "pos_p95": 1.099591808015099,
+    "pos_max": 8.208543938707304,
+    "rot_med": 0.9192020057575345,
+    "rot_p95": 1.6834936600569737,
+    "rot_max": 11.007620433137518
+   },
+   "yellow": {
+    "frames": 2400,
+    "states": {
+     "TRACKING": 2268,
+     "OCCLUDED": 31,
+     "LOST": 101
+    },
+    "tracking_when_clearly_visible": 0.9977313974591652,
+    "pos_med": 0.3032574538254318,
+    "pos_p95": 2.2561902430088883,
+    "pos_max": 8.829183010139257,
+    "rot_med": 0.5519555947722089,
+    "rot_p95": 1.2861125518810603,
+    "rot_max": 7.808830325816326
+   }
+  },
+  "events": [
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 1.6099999999999999,
+    "peak_speed": 2.1067025204420857,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "yellow",
+    "t": 4.116511135359332,
+    "peak_speed": 0.860713092839074,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 6.3659866071419,
+    "peak_speed": 1.668794304770558,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 8.876821244724635,
+    "peak_speed": 0.5439420079613834,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 10.79259258588328,
+    "peak_speed": 1.6842977598802231,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "yellow",
+    "t": 13.56153792295075,
+    "peak_speed": 0.6924021439853106,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "yellow",
+    "t": 15.645960407568039,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 17.458574377004485,
+    "peak_speed": 2.236730738757823,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 20.581328153125558,
+    "peak_speed": 0.5012903311387005,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 23.186504062425758,
+    "peak_speed": 0.43035361316010795,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 25.453441785580555,
+    "peak_speed": 0.8794461715503125,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "red",
+    "t": 28.085631483392522,
+    "peak_speed": 1.7881905363881343,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 30.71711851308272,
+    "peak_speed": 0.5967040939317456,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "knock",
+    "cube": "blue",
+    "t": 32.99459814881689,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "blue",
+    "t": 35.16151892081127,
+    "peak_speed": 2.1591635059240164,
+    "reacquire_frames": 0,
+    "reacquire_ms": 0.0
+   },
+   {
+    "kind": "release",
+    "cube": "green",
+    "t": 37.91696571477669,
+    "peak_speed": 0.7234196889303313,
+    "reacquire_frames": 1,
+    "reacquire_ms": 16.666666666666668
+   }
+  ],
+  "wrong_tracking_frames": [
+   {
+    "frame": 918,
+    "cube": "red",
+    "pos_err": 9.16078728243569,
+    "rot_err": 10.335044856926105,
+    "vis": 0.7263045793397231,
+    "source": "reinit"
+   },
+   {
+    "frame": 1842,
+    "cube": "green",
+    "pos_err": 8.208543938707304,
+    "rot_err": 11.007620433137518,
+    "vis": 0.4279359430604982,
+    "source": "reinit"
+   }
+  ],
+  "timing_ms": {
+   "total": {
+    "p50": 14.582519000214234,
+    "p95": 17.649703599909117,
+    "max": 46.571790000143665
+   },
+   "detect": {
+    "p50": 7.9611709998062,
+    "p95": 9.305669299919826,
+    "max": 39.424544000212336
+   },
+   "track": {
+    "p50": 3.6840060006397835,
+    "p95": 5.360002300358245,
+    "max": 10.614936999900237
+   },
+   "check": {
+    "p50": 2.5239090005015896,
+    "p95": 4.074612899285057,
+    "max": 7.067734999964159
+   }
+  },
+  "wall_s": 286.1218160979997
+ }
+}
