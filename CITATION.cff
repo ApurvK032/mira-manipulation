@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "MIRA: Markerless Interactive Reactive Arm"
+type: software
+authors:
+  - family-names: "K"
+    given-names: "Apurv"
+repository-code: "https://github.com/ApurvK032/mira-manipulation"
+date-released: "2026-10-16"
+abstract: >-
+  Markerless 6D object pose tracking (RGB-D, CAD-model based) driving a reactive robot arm:
+  closed-loop pick-and-place and cube stacking that adapts as a person moves objects.
+keywords:
+  - robotics
+  - robot manipulation
+  - 6D pose estimation
+  - markerless tracking
+  - RGB-D
+  - human-robot interaction
+  - visual servoing
+  - sim-to-real
+  - reinforcement learning
