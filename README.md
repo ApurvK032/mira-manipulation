@@ -1,17 +1,37 @@
 # MIRA: Markerless Interactive Reactive Arm
 
-*Markerless 6D tracking from CAD models, driving a reactive arm. First task: stacking cubes while a person interferes.*
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Platform: Linux | WSL2](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#setup-no-sudo-needed)
+[![Camera: Intel RealSense D455](https://img.shields.io/badge/camera-RealSense%20D455-0071c5.svg)](https://www.intelrealsense.com/depth-camera-d455/)
+[![Arm: Trossen WidowX AI](https://img.shields.io/badge/arm-Trossen%20WidowX%20AI-black.svg)](https://www.trossenrobotics.com/)
+[![Sim: MuJoCo](https://img.shields.io/badge/sim-MuJoCo-orange.svg)](https://mujoco.org/)
 
-A Trossen WidowX AI arm and one fixed Intel RealSense D455 stack a red 5 cm cube on a green one, while a
-person keeps interfering. The arm hovers over the red cube and follows it as it is moved. It picks
-red the moment it comes to rest. While carrying, it follows green if green is moved. It stacks, then
-stays awake: if the stack is knocked over, a grasp misses or red is pulled away mid-grasp, it simply
-goes again.
+**Markerless 6D object pose tracking driving a reactive robot arm.** MIRA tracks objects from their CAD
+models in RGB-D video, with no AprilTags or fiducial markers, and closes the loop to a robot arm fast
+enough to keep up with a person moving things around. The first task is reactive pick-and-place: stacking
+one cube on another while someone keeps interfering.
 
-The perception is tagless: no AprilTags, no markers. It uses color and depth with DLR-RM's M3T tracker,
-and checks every pose against the image before anything acts on it. A scripted controller drives the
-arm today. It is the baseline and the infrastructure for an RL policy trained in MuJoCo (see
-[Roadmap](#roadmap) and [PLAN.md](PLAN.md)).
+A Trossen WidowX AI arm and one fixed Intel RealSense D455 stack a red 5 cm cube on a green one. The arm
+hovers over the red cube and follows it as it is moved (position-based visual servoing). It picks red
+the moment it comes to rest, follows green at carry height if green is moved, stacks, then stays awake:
+if the stack is knocked over, a grasp misses or red is pulled away mid-grasp, it simply goes again. A
+scripted controller drives the arm today. It is the baseline and the infrastructure for a sim-to-real
+reinforcement learning policy (see [Roadmap](#roadmap) and [PLAN.md](PLAN.md)).
+
+**Highlights**
+- **Markerless 6D pose tracking:**
+  - color + depth detection, then [M3T](https://github.com/DLR-RM/3DObjectTracking) region and depth tracking, at ~60 fps with ~8 ms compute per frame;
+  - every pose is verified against the image before it is used ("never confidently wrong");
+  - occlusion-aware: the other object counts as a known occluder.
+- **Reactive, closed-loop manipulation:** follows moving objects with about 0.25 s lag, re-plans in about 0.5 s, and recovers from missed grasps, drops and knocked-over stacks.
+- **Human-robot interaction:** built for a person moving, removing and knocking over objects mid-task.
+- **Safety first:**
+  - every joint path is checked against a workspace box using the arm's MuJoCo model;
+  - tracking-error and collision (effort) guards while moving;
+  - a finger-clearance check against the real gripper meshes.
+- **Tested on real hardware:** 10/10 stacks in a scripted reliability run, and 2.1 mm RMS camera-to-arm calibration.
+- **Next: sim-to-real reinforcement learning** in MuJoCo, against a human-interference benchmark.
 
 ## Demo
 
@@ -196,3 +216,16 @@ process (`sim/render_worker.py`), because M3T calls `glfwTerminate` after it bui
 ## License
 
 MIT (see [LICENSE](LICENSE)). The Trossen MuJoCo model in `assets/trossen_arm_mujoco` keeps its own BSD 3-Clause license.
+
+## Citation
+
+If MIRA is useful in your work, please cite it:
+
+```bibtex
+@software{mira_manipulation,
+  author = {K, Apurv},
+  title  = {{MIRA}: Markerless Interactive Reactive Arm},
+  year   = {2026},
+  url    = {https://github.com/ApurvK032/mira-manipulation}
+}
+```
