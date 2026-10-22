@@ -1,0 +1,34 @@
+camera_serial: '151422252817'
+solved_on: 2026-10-16 17:22
+method: cube in gripper, least squares (camera pose, cube offset, depth scale)
+convention: 'T_base_cam maps camera-frame points (OpenCV) into the arm base frame;
+  apply depth_scale to camera-frame positions first: p_base = T_base_cam @ (depth_scale
+  * p_cam)'
+T_base_cam:
+- - -0.00512687
+  - 0.34608619
+  - -0.93818872
+  - 0.83018292
+- - 0.99996459
+  - 0.00803564
+  - -0.00250021
+  - -0.03768606
+- - 0.00667366
+  - -0.93816831
+  - -0.34611513
+  - 0.42342608
+- - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+depth_scale: 1.0
+cube_offset_in_fingertip_frame_m:
+- -0.00244
+- 0.002
+- 0.00159
+poses_used: 18
+poses_total: 18
+rms_mm: 2.144
+max_mm: 3.775
+data: runs/calib/calib_20261016_172105.json
+stream: 848x480 color, depth aligned to color

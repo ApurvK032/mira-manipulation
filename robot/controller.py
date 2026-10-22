@@ -32,11 +32,13 @@ from pathlib import Path
 import numpy as np
 
 from .arm import REST, WATCH, ArmModel, Limits, MoveLog, SafeArm, SafetyStop, minjerk
-from .camera_frame import CameraToBase
+from .camera_frame import CameraMismatch, CameraToBase
 from .follow import HoverFollower
-from .grasp import (HALF, REACH, TABLE_Z, GripperShape, RestTracker, cubes_in_base, plan_top_down, read_stats,
-                    top_face_tilt_deg)
+from .grasp import (HALF, REACH, TABLE_Z, GripperShape, RestTracker, check_live_camera, cubes_in_base, plan_top_down,
+                    read_stats, top_face_tilt_deg)
 from .ik import IK
+from .reaim import plan_ff, quintic
+from .stream import Streamer
 
 ROOT = Path(__file__).resolve().parents[1]
 GRASP = 0.010  # fingertips 10 mm above the cube centre: hold its top 15 mm
@@ -105,7 +107,7 @@ class DryArm:
         self._q, self._g = REST.copy(), 0.0
         self.position_mode = False
 
-    check_target = SafeArm.check_target
+    check_target, _check_path, _check_ff = SafeArm.check_target, SafeArm._check_path, SafeArm._check_ff
 
     def q(self):
         return self._q.copy()
@@ -147,10 +149,20 @@ class DryArm:
         v = sum(k * c[k] * s**(k - 1) for k in range(1, 6))
         return q, (v if s < T else np.zeros(6))
 
-    def follow_goal(self, q_goal, speed, gripper_floor, min_time=0.3, accel=3.0):
+    def follow_goal(self, q_goal, speed, gripper_floor, min_time=0.3, accel=3.0, goal_velocity=None):
         q_goal = np.asarray(q_goal, dtype=float)
         q0, v0 = self._state()
         self._q = q0
+        if goal_velocity is not None:  # feedforward re-aim (robot.reaim.plan_ff), as SafeArm.follow_goal
+            g, v_end, T = plan_ff(q0, v0, q_goal, np.asarray(goal_velocity, dtype=float),
+                                  min(speed, self.limits.max_joint_speed), accel, min_time, self.v_max, self.q_min, self.q_max)
+            if np.any(v_end):
+                try:
+                    self._check_ff(q0, v0, g, v_end, T, gripper_floor)
+                    self._traj = (time.time(), T, quintic(q0, v0, g, v_end, T))
+                    return T
+                except SafetyStop:
+                    pass  # near a limit or the floor: a plain re-aim instead (below)
         self.check_target(q_goal, q0, n=21, gripper_floor=gripper_floor)
         dq = np.abs(q_goal - q0)
         T = max(min_time, 1.875 * dq.max() / min(speed, self.limits.max_joint_speed), np.sqrt(5.77 * dq.max() / accel))
@@ -163,15 +175,59 @@ class DryArm:
     def follow_check(self):
         self._q, self._v = self._state()
 
+    def stream_begin(self, rate=100.0, speed=None, accel=4.0, tau=0.06, window=0.3):
+        q0, _ = self._state()
+        self._q, self._traj, self.position_mode = q0, None, True
+        self._st = Streamer(rate, min(speed or self.limits.max_joint_speed, self.limits.max_joint_speed), accel, tau)
+        self._st.reset(q0)
+        self._st_goal = q0.copy()
+        self.stream_rejects = 0
+
+    def stream_tick(self, q_goal, gripper_floor):
+        """As SafeArm.stream_tick; the driver's straight-line move to each point over one tick is modelled as a
+        first-degree trajectory from the current commanded state."""
+        # clip to this arm's own joint limits (the IK clips to the model's, which can differ by a mrad): a policy
+        # pushing a joint to its limit is followed to the limit instead of stopping the run
+        q_goal = np.clip(np.asarray(q_goal, dtype=float), self.q_min, self.q_max)
+        last = self._st.q.copy()
+        if np.abs(q_goal - self._st_goal).max() > 1e-6:
+            try:
+                self.check_target(q_goal, last, n=11, gripper_floor=gripper_floor)
+                self._st_goal, self.stream_rejects = q_goal.copy(), 0
+            except SafetyStop:
+                # a goal that fails the checks is not followed: keep heading to the last accepted one, and stop only
+                # if goals keep failing for 0.5 s (a target grazing the floor for a tick should not end the attempt)
+                self.stream_rejects += 1
+                if self.stream_rejects * self._st.dt >= 0.5:
+                    raise
+        q_next, _ = self._st.step(self._st_goal)
+        # the generator can overshoot its goal by a few mrad: keep each point inside the joint limits, stopping there
+        if np.any(q_next < self.q_min) or np.any(q_next > self.q_max):
+            at = (q_next < self.q_min) | (q_next > self.q_max)
+            q_next = np.clip(q_next, self.q_min, self.q_max)
+            self._st.q, self._st.v = q_next.copy(), np.where(at, 0.0, self._st.v)
+        self.check_target(q_next, last, n=2, gripper_floor=gripper_floor)
+        q0, _ = self._state()
+        dt = self._st.dt
+        self._traj = (time.time(), dt, [q0, (q_next - q0) / dt, np.zeros(6), np.zeros(6), np.zeros(6), np.zeros(6)])
+        return q_next
+
+    def velocities(self):
+        return self._state()[1] if getattr(self, "_traj", None) is not None else np.zeros(6)
+
     def gripper_position(self):
         return self._g
 
-    def open_gripper(self, position=0.035, duration=0.8):
+    def open_gripper(self, position=0.035, duration=0.8, blocking=True):
         self._g = position
         return position
 
-    def close_gripper(self, force=None, settle=0.8):
+    def close_gripper(self, force=None, settle=0.8, mode="external_effort"):
         self._g = 0.027  # pretend it closed on the cube
+        return self._g
+
+    def squeeze_gripper(self, force=20.0, start=None, timeout=6.0):
+        self._g = 0.027
         return self._g
 
     def gripper_idle(self):
@@ -764,6 +820,8 @@ def main():
     ap.add_argument("--bottom", default="green")
     ap.add_argument("--still", type=float, default=1.0, help="s a cube must rest before the arm goes for it")
     ap.add_argument("--dry", action="store_true", help="no arm: plan and simulate the motion only")
+    ap.add_argument("--ignore-serial", action="store_true",
+                    help="use assets/calibration.yaml although the live camera is not the one it was fitted with")
     args = ap.parse_args()
 
     def on_term(*_):
@@ -773,8 +831,13 @@ def main():
     log_dir = ROOT / "runs" / "controller"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"run_{time.strftime('%Y%m%d_%H%M%S')}{'_dry' if args.dry else ''}.jsonl"
+    cal = CameraToBase(ignore_serial=args.ignore_serial)
+    try:
+        check_live_camera(cal)  # before connecting to the arm; every snapshot is checked again (cubes_in_base)
+    except CameraMismatch as e:
+        raise SystemExit(str(e))
     arm = DryArm() if args.dry else SafeArm(args.ip)
-    ctl = StackController(arm, CameraToBase(), args.top, args.bottom, still_s=args.still, log_path=log_path)
+    ctl = StackController(arm, cal, args.top, args.bottom, still_s=args.still, log_path=log_path)
     print(f"log: {log_path}", flush=True)
     try:
         ctl.run()
