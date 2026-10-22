@@ -26,7 +26,8 @@ import numpy as np
 from perception.detector import load_colors
 from perception.overlay import draw_cube, draw_result
 from perception.pipeline import CubePerception
-from perception.sources import open_source
+from perception.sources import NetworkSource, RealSenseSource, open_source
+from robot.camera_frame import CameraMismatch, CameraToBase
 
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -117,7 +118,8 @@ class Viewer:
         self.raw = None  # latest (color, depth) for /raw.png and /depth.png
         self.status = ""  # banner text set by a running task (GET /status?msg=...)
         self.command = {"seq": 0, "c": None, "t": None}  # last operator button press, read by robot.controller
-        self.stats = {"cubes": {}, "view": self.view, "received": 0, "camera": ""}
+        self.serial = live_serial(src)  # published so every consumer can check it against its calibration
+        self.stats = {"cubes": {}, "view": self.view, "received": 0, "camera": "", "camera_serial": self.serial}
         self.comp, self.lat, self.times = [], [], []
         self.log = None  # set to a file to record per-frame states and check scores
 
@@ -139,6 +141,18 @@ class Viewer:
         return draw_result(f.color, self.src.intrinsics, r, self.colors)
 
     def loop(self):
+        """The capture/perception loop. If it fails (e.g. the camera disconnects), the whole process exits: serving the
+        last stats on would show the arm scripts frozen cube poses as if they were live."""
+        try:
+            self._loop()
+        except BaseException:
+            import traceback
+
+            traceback.print_exc()
+            print("perception loop stopped: exiting so that no stale cube poses are served", flush=True)
+            os._exit(1)
+
+    def _loop(self):
         last_pub = 0.0
         while True:
             f = self.src.read()
@@ -158,6 +172,7 @@ class Viewer:
             if self.log is not None:
                 self.log.write(json.dumps({"t": now, "cubes": cubes}) + "\n")
             self.stats = {"t": now, "cubes": cubes, "view": self.view, "fps": fps, "status": self.status,
+                          "camera_serial": self.serial,
                           "command": self.command,
                           "compute_p50": float(np.median(self.comp)), "compute_p95": float(np.percentile(self.comp, 95)),
                           "latency_p50": float(np.median(self.lat)),
@@ -242,6 +257,11 @@ def make_handler(viewer: Viewer):
     return Handler
 
 
+def live_serial(src):
+    """Serial of a live camera (RealSense here, or via the Windows streamer); None for a recording."""
+    return getattr(src, "serial", None) or (getattr(src, "info", None) or {}).get("serial")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="tcp:127.0.0.1:5600")  # localhost only (mirrored WSL networking)
@@ -252,12 +272,22 @@ def main():
     ap.add_argument("--quality", type=int, default=80)
     ap.add_argument("--no-m3t", action="store_true")
     ap.add_argument("--log", help="JSON-lines file with per-frame states and check scores")
+    ap.add_argument("--ignore-serial", action="store_true",
+                    help="run although the camera is not the one assets/calibration.yaml was fitted with (e.g. to "
+                         "calibrate a new camera); scripts that use the calibration still refuse it")
     args = ap.parse_args()
 
     colors = load_colors()
     names = [n for n in args.cubes.split(",") if n in colors]
     server = ThreadingHTTPServer((args.bind, args.port), None)
     src = open_source(args.source)
+    live = isinstance(src, (RealSenseSource, NetworkSource))
+    if live and not args.ignore_serial:
+        try:
+            CameraToBase().check_serial(live_serial(src))
+        except CameraMismatch as e:
+            src.close()
+            raise SystemExit(f"{e}\n(start with --ignore-serial to run anyway, e.g. to calibrate this camera)")
     per = CubePerception(src.intrinsics, names, colors={n: colors[n] for n in names},
                          use_m3t=not args.no_m3t, depth_scale=src.depth_scale)
     viewer = Viewer(src, per, colors, args.stream_fps, args.quality)

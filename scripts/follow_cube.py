@@ -28,10 +28,10 @@ from pathlib import Path
 import numpy as np
 
 from robot.arm import REST, WATCH, SafeArm, SafetyStop
-from robot.camera_frame import CameraToBase
+from robot.camera_frame import CameraMismatch, CameraToBase
 from robot.controller import DryArm, read_command
 from robot.follow import FLOOR, RADIUS, HoverFollower
-from robot.grasp import cubes_in_base, read_stats
+from robot.grasp import check_live_camera, cubes_in_base, read_stats
 
 ROOT = Path(__file__).resolve().parents[1]
 DT = 0.01
@@ -73,6 +73,8 @@ def main():
     ap.add_argument("--cube", default="red")
     ap.add_argument("--speed", type=float, default=1.0, help="peak joint speed, rad/s (capped by robot.arm.Limits)")
     ap.add_argument("--dry", action="store_true", help="no arm: simulate the motion only")
+    ap.add_argument("--ignore-serial", action="store_true",
+                    help="use assets/calibration.yaml although the live camera is not the one it was fitted with")
     args = ap.parse_args()
 
     def on_term(*_):
@@ -84,8 +86,12 @@ def main():
     log_dir = ROOT / "runs" / "follow"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"run_{time.strftime('%Y%m%d_%H%M%S')}{'_dry' if args.dry else ''}.jsonl"
+    cal = CameraToBase(ignore_serial=args.ignore_serial)
+    try:
+        check_live_camera(cal)  # before connecting to the arm; every snapshot is checked again (cubes_in_base)
+    except CameraMismatch as e:
+        raise SystemExit(str(e))
     arm = DryArm() if args.dry else SafeArm(args.ip)
-    cal = CameraToBase()
     f = HoverFollower(arm, vmax=args.speed, log_path=log_path)
 
     def aim(snap):
