@@ -16,7 +16,7 @@ if [ ! -x "$MM" ]; then
   chmod +x "$MM"
 fi
 
-if "$MM" env list | grep -q '\brlwx\b'; then
+if "$MM" env list | awk '{print $1}' | grep -qx rlwx; then  # the exact name: "rlwx-train" must not count
   "$MM" install -y -n rlwx -f "$ROOT/environment.yml"
 else
   "$MM" create -y -n rlwx -f "$ROOT/environment.yml"

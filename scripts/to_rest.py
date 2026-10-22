@@ -2,8 +2,10 @@
 
 Refuses to move if the gripper looks closed on something. Path: straight up if the fingertips are low,
 then the watch pose, then rest (brakes on); every move checked by SafeArm as usual.
-Usage:  python -m scripts.to_rest
+Usage:  python -m scripts.to_rest [--ip 192.168.1.2]
 """
+
+import argparse
 
 import numpy as np
 
@@ -13,7 +15,9 @@ from robot.ik import IK
 
 
 def main():
-    arm = SafeArm()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ip", default="192.168.1.3", help="arm controller IP")
+    arm = SafeArm(ap.parse_args().ip)
     try:
         q, g = arm.q(), arm.gripper_position()
         tip = arm.model.fk(q)[0]

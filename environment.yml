@@ -26,4 +26,4 @@ dependencies:
   - pip:
       - mujoco
       - imageio
-      - trossen-arm==1.8.3  # must match the arm controller firmware (lab arm: 1.8.3)
+      - trossen-arm==1.9.3  # must match the arm controller firmware's major.minor (lab arm: firmware 1.9.4 since 2026-10-20)
