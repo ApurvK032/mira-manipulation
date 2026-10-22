@@ -1,0 +1,18 @@
+# Training environment for rl/ (the micromamba env "rlwx-train" on the lab PC). Python 3.12.
+# PyTorch with CUDA 12.8 wheels also covers the RTX 5090 (Blackwell, sm_120):
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r rl/requirements-train.txt
+stable-baselines3==2.9.0
+gymnasium==1.4.0
+mujoco==3.16.0
+numpy==2.5.4
+tensorboard==2.21.0
+cloudpickle==3.1.2
+pandas==3.0.6
+matplotlib==3.11.2
+rich==15.0.0
+tqdm==4.70.1
+# Only needed to import robot/ (SafeArm, DryArm) for dry-testing a deployment runner; must match the arm firmware.
+trossen-arm==1.9.3
+# robot/camera_frame.py reads assets/calibration.yaml (rl/deploy.py, rl/check_deploy_obs.py).
+pyyaml==6.0.3
