@@ -4,7 +4,7 @@ Usage:  python -m scripts.check_arm                    # the lab arm (192.168.1.
         python -m scripts.check_arm --ip 192.168.1.2
 Before connecting, make sure the arm is resting (folded in its sleep pose or supported): whether the
 driver changes the motor mode on connect / cleanup is not documented, and a held arm would drop.
-The driver version must match the arm's firmware (lab arm: 1.8.3, see environment.yml).
+The driver version must match the arm's firmware major.minor (lab arm: firmware 1.9.4, driver 1.9.3, see environment.yml).
 """
 
 import argparse
