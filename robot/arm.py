@@ -18,6 +18,9 @@ import mujoco
 import numpy as np
 import trossen_arm as ta
 
+from .reaim import evaluate, plan_ff, quintic
+from .stream import Streamer
+
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT / "assets" / "trossen_arm_mujoco" / "wxai" / "wxai_follower.xml"
 
@@ -111,6 +114,9 @@ class SafeArm:
     def efforts(self) -> np.ndarray:
         return np.array(self.drv.get_arm_external_efforts(), dtype=float)
 
+    def velocities(self) -> np.ndarray:
+        return np.array(self.drv.get_arm_velocities(), dtype=float)
+
     def modes(self):
         return [str(m).split(".")[-1] for m in self.drv.get_modes()]
 
@@ -131,17 +137,38 @@ class SafeArm:
         if np.any(q_goal < lo) or np.any(q_goal > hi):
             raise SafetyStop(f"joint target outside limits: {np.round(q_goal, 3)} not in "
                              f"[{np.round(self.q_min, 2)}, {np.round(self.q_max, 2)}]")
+        self._check_path([q_start + (q_goal - q_start) * minjerk(s) for s in np.linspace(0, 1, n)], q_start,
+                         gripper_floor)
+
+    def _check_path(self, qs, q_start, gripper_floor=None):
+        """Raise SafetyStop unless every joint configuration in qs (a path from q_start) keeps the gripper and the
+        links inside the workspace box (gripper_floor as in check_target)."""
+        lim = self.limits
         bmin, bmax = np.array(lim.box_min), np.array(lim.box_max)
         # the start pose may sit below the box floor (the rest pose is low); the path may not go lower
         floor = min(bmin[2], self.model.fk(q_start)[1][:, 2].min() - 1e-3)
-        for s in np.linspace(0, 1, n):
-            q = q_start + (q_goal - q_start) * minjerk(s)
+        for i, q in enumerate(qs):
             _, pts = self.model.fk(q)
             for p, name in zip(pts, ["gripper", *self.model.points]):
                 f = gripper_floor if (name == "gripper" and gripper_floor is not None) else floor
                 if p[0] < bmin[0] or p[1] < bmin[1] or p[2] < f or np.any(p > bmax):
                     raise SafetyStop(f"{name} would leave the workspace at {np.round(p, 3)} "
-                                     f"({100 * s:.0f}% along the move)")
+                                     f"({100 * i / max(len(qs) - 1, 1):.0f}% along the move)")
+
+    def _check_ff(self, q0, v0, q_goal, v_end, T, gripper_floor):
+        """Checks for a feedforward re-aim: the goal and the straight path (check_target), the planned quintic
+        itself (it may bulge past the straight path), and where the arm would coast to if the next re-aim came
+        0.15 s late. Returns the joint-space bounds of all that, for follow_check."""
+        self.check_target(q_goal, q0, n=21, gripper_floor=gripper_floor)
+        qs = list(evaluate(quintic(q0, v0, q_goal, v_end, T), np.linspace(0, T, 21))[0])
+        coast = q_goal + v_end * 0.15
+        lo, hi = np.minimum(self.q_min, q0 - 1e-3), np.maximum(self.q_max, q0 + 1e-3)
+        for q in qs + [coast]:
+            if np.any(q < lo) or np.any(q > hi):
+                raise SafetyStop(f"feedforward re-aim would pass a joint limit: {np.round(q, 3)}")
+        self._check_path(qs + [coast], q0, gripper_floor)
+        pts = np.array(qs + [coast, q0, q_goal])
+        return pts.min(axis=0), pts.max(axis=0)
 
     # ----- motion -----
     def _ensure_position_mode(self):
@@ -212,14 +239,34 @@ class SafeArm:
         q = self.q()
         self._fb = dict(start=q, goal=q, effort=self.efforts(), speed=self.limits.max_joint_speed)
 
-    def follow_goal(self, q_goal, speed, gripper_floor, min_time=0.3, accel=3.0) -> float:
+    def follow_goal(self, q_goal, speed, gripper_floor, min_time=0.3, accel=3.0, goal_velocity=None) -> float:
         """Re-aim: one smooth move from where the arm is to q_goal (path checked like move_joints).
         Returns its duration. Call follow_check() often in between. The duration also keeps the peak joint
         acceleration under `accel` rad/s^2 (a quintic peaks at 5.77 dq / T^2): short, sharp re-aims swing
-        the whole arm on the base joint and read as unexpected effort there."""
+        the whole arm on the base joint and read as unexpected effort there.
+
+        goal_velocity (opt-in, rad/s per joint, from robot.reaim.GoalVelocity): a feedforward re-aim. The move aims
+        at where the moving goal will be when it ends and arrives with the goal's velocity (robot.reaim.plan_ff,
+        through the driver's feedforward velocities), so the arm does not brake at every re-aim. Without it,
+        behaviour is exactly as before. Near a joint limit or the workspace edge (where the feedforward move or
+        its coast would leave them), it falls back to a plain re-aim."""
         q_goal = np.asarray(q_goal, dtype=float)
         q0 = self.q()
         speed = min(speed, self.limits.max_joint_speed)
+        if goal_velocity is not None:
+            v0 = self.velocities()
+            g, v_end, T = plan_ff(q0, v0, q_goal, np.asarray(goal_velocity, dtype=float), speed, accel, min_time,
+                                  self.v_max, self.q_min, self.q_max)
+            if np.any(v_end):
+                try:
+                    lo, hi = self._check_ff(q0, v0, g, v_end, T, gripper_floor)
+                    self.drv.set_arm_positions(g, T, False, v_end, np.zeros(6))
+                    self._fb.update(start=q0, goal=g, speed=speed, lo=lo, hi=hi)
+                    return T
+                except SafetyStop:
+                    pass  # near a limit or the floor: a plain re-aim instead, with the usual checks (below)
+        self._fb.pop("lo", None)
+        self._fb.pop("hi", None)
         self.check_target(q_goal, q0, n=21, gripper_floor=gripper_floor)
         dq = np.abs(q_goal - q0)
         T = max(min_time, 1.875 * dq.max() / speed, np.sqrt(5.77 * dq.max() / accel),
@@ -236,7 +283,9 @@ class SafeArm:
         try:
             q = self.q()
             tol = lim.tracking_tol + lim.tracking_tol_per_speed * fb["speed"]
-            lo, hi = np.minimum(fb["start"], fb["goal"]) - tol, np.maximum(fb["start"], fb["goal"]) + tol
+            lo = fb["lo"] if "lo" in fb else np.minimum(fb["start"], fb["goal"])  # lo/hi: a feedforward re-aim
+            hi = fb["hi"] if "hi" in fb else np.maximum(fb["start"], fb["goal"])
+            lo, hi = lo - tol, hi + tol
             if np.any(q < lo) or np.any(q > hi):
                 raise SafetyStop("following: arm is off its path: blocked?")
             if lim.effort_limit is not None:
@@ -252,6 +301,54 @@ class SafeArm:
             self.hold()
             raise
 
+    # ----- streaming targets (driver 1.9.3+) -----
+    # Driver 1.9.3 joins goals re-sent every few milliseconds into continuous motion, so a moving target can be
+    # streamed instead of re-aimed: robot.stream.Streamer turns each goal into smooth, speed- and acceleration-limited
+    # points, one per tick, each sent with its velocity. Needs driver and firmware 1.9.x; on 1.8.3 use follow_goal.
+    def stream_begin(self, rate=100.0, speed=None, accel=4.0, tau=0.06, window=0.3):
+        """Start streaming from where the arm is. Call stream_tick every 1/rate s and follow_check in between
+        (its tracking window covers the points commanded in the last `window` s)."""
+        self._ensure_position_mode()
+        q = self.q()
+        self._st = Streamer(rate, min(speed or self.limits.max_joint_speed, self.limits.max_joint_speed), accel, tau)
+        self._st.reset(q)
+        self._st_goal, self._st_recent = q.copy(), [q.copy()] * max(2, int(round(window * rate)))
+        self.stream_rejects = 0
+        self._fb = dict(start=q, goal=q, effort=self.efforts(), speed=self._st.speed, lo=q.copy(), hi=q.copy())
+
+    def stream_tick(self, q_goal, gripper_floor):
+        """One tick toward q_goal. A new goal is checked first like any move (joint limits, workspace box, fingertip
+        floor, on the path from the last commanded point), and so is every step; a goal that fails is not followed
+        (the last accepted goal is kept) until goals have failed for 0.5 s, which raises SafetyStop. Returns the
+        commanded point."""
+        # clip to this arm's own joint limits (the IK clips to the model's, which can differ by a mrad): a policy
+        # pushing a joint to its limit is followed to the limit instead of stopping the run
+        q_goal = np.clip(np.asarray(q_goal, dtype=float), self.q_min, self.q_max)
+        last = self._st.q.copy()
+        if np.abs(q_goal - self._st_goal).max() > 1e-6:
+            try:
+                self.check_target(q_goal, last, n=11, gripper_floor=gripper_floor)
+                self._st_goal, self.stream_rejects = q_goal.copy(), 0
+            except SafetyStop:
+                # a goal that fails the checks is not followed: keep heading to the last accepted one, and stop only
+                # if goals keep failing for 0.5 s (a target grazing the floor for a tick should not end the attempt)
+                self.stream_rejects += 1
+                if self.stream_rejects * self._st.dt >= 0.5:
+                    raise
+        q_next, v_next = self._st.step(self._st_goal)
+        # the generator can overshoot its goal by a few mrad: keep each point inside the joint limits, stopping there
+        if np.any(q_next < self.q_min) or np.any(q_next > self.q_max):
+            at = (q_next < self.q_min) | (q_next > self.q_max)
+            q_next = np.clip(q_next, self.q_min, self.q_max)
+            self._st.q, self._st.v = q_next.copy(), np.where(at, 0.0, self._st.v)
+            v_next = self._st.v.copy()
+        self.check_target(q_next, last, n=2, gripper_floor=gripper_floor)
+        self.drv.set_arm_positions(q_next, self._st.dt, False, v_next, np.zeros(6))
+        self._st_recent = self._st_recent[1:] + [q_next]
+        rec = np.array(self._st_recent)
+        self._fb.update(start=last, goal=q_next, lo=rec.min(axis=0), hi=rec.max(axis=0))
+        return q_next
+
     def _stop_on_path(self, q0, q_goal, T, t, lead=0.15, duration=0.4):
         """Slow down and stop at the planned position `lead` s ahead (still on the checked path)."""
         q_stop = q0 + (q_goal - q0) * minjerk((t + lead) / T)
@@ -262,21 +359,55 @@ class SafeArm:
     def gripper_position(self) -> float:
         return float(self.drv.get_gripper_position())
 
-    def open_gripper(self, position=None, duration=0.8) -> float:
-        """Open to a finger position (m) under position control; returns the reached position."""
+    def open_gripper(self, position=None, duration=0.8, blocking=True) -> float:
+        """Open to a finger position (m) under position control; returns the reached position (with
+        blocking=False, returns at once with the position the fingers are at now)."""
         position = self.limits.gripper_open if position is None else position
         position = float(np.clip(position, 0.0, 0.040))
         self.drv.set_gripper_mode(ta.Mode.position)
-        self.drv.set_gripper_position(position, duration, True)
+        self.drv.set_gripper_position(position, duration, blocking)
         return self.gripper_position()
 
-    def close_gripper(self, force=None, settle=0.8) -> float:
+    def close_gripper(self, force=None, settle=0.8, mode="external_effort") -> float:
         """Close with a limited force (N) so it stops on whatever is between the fingers; returns the
-        finger position: about half the object's width, or near 0 if it closed on nothing."""
+        finger position: about half the object's width, or near 0 if it closed on nothing.
+        mode: "external_effort" (default, as always) or "effort" (total effort: the steadiest hold of a cube picked
+        off the table on firmware 1.9.4, 18 N with no force spike; scripts/grip_lift_test.py, 2026-10-20)."""
         force = min(self.limits.gripper_force if force is None else force, 40.0)
-        self.drv.set_gripper_mode(ta.Mode.external_effort)
-        self.drv.set_gripper_external_effort(-force, 0.0, False)
+        if mode == "effort":
+            self.drv.set_gripper_mode(ta.Mode.effort)
+            self.drv.set_gripper_effort(-force, 0.0, False)
+        else:
+            self.drv.set_gripper_mode(ta.Mode.external_effort)
+            self.drv.set_gripper_external_effort(-force, 0.0, False)
         time.sleep(settle)
+        return self.gripper_position()
+
+    def squeeze_gripper(self, force=20.0, start=None, timeout=6.0) -> float:
+        """Close on an object in position mode and squeeze it with about `force` N, then hold that position target.
+        start (m per finger): close slowly to this target first (just inside the object's width, e.g. 25.5 mm for a
+        5 cm cube, which reads about 27.5 mm when held). Then, only while the fingers are stopped against the object,
+        step the target in until the gripper's effort reaches `force`. Returns the finger position (m); near 0 if it
+        closed on nothing. On firmware 1.9.4 the external-effort close (close_gripper) was seen to chatter against a
+        cube and let it slip; position mode held it steadily (scripts/gripper_hold_test.py)."""
+        force = min(force, 40.0)
+        self.drv.set_gripper_mode(ta.Mode.position)
+        goal = self.gripper_position() if start is None else float(start)
+        self.drv.set_gripper_position(goal, 0.6, False)
+        time.sleep(0.8)
+        t0 = time.time()
+        while time.time() - t0 < timeout and goal > 0.0:
+            pos, still = self.gripper_position(), abs(self.drv.get_gripper_velocity()) < 0.003
+            if not still:
+                time.sleep(0.05)
+                continue
+            blocked = pos - goal > 0.0005  # stopped short of the target: the object holds the fingers apart
+            if blocked and abs(self.drv.get_gripper_effort()) >= force:
+                break
+            goal = max(0.0, goal - (0.0003 if blocked else 0.002))
+            self.drv.set_gripper_position(goal, 0.1, False)
+            time.sleep(0.15)
+        time.sleep(0.2)
         return self.gripper_position()
 
     def gripper_idle(self):

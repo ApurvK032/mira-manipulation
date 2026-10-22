@@ -80,8 +80,21 @@ def read_stats(timeout=1.0) -> dict:
     return json.load(urllib.request.urlopen(STATS, timeout=timeout))
 
 
+def check_live_camera(cal: CameraToBase, timeout=2.0) -> bool:
+    """Before connecting to the arm: raise CameraMismatch if the live view (scripts.web_view) runs a camera other
+    than the calibrated one. Returns False if the view cannot be reached yet (cubes_in_base checks every snapshot)."""
+    try:
+        s = read_stats(timeout=timeout)
+    except OSError:
+        return False
+    cal.check_serial(s.get("camera_serial"))
+    return True
+
+
 def cubes_in_base(stats: dict, cal: CameraToBase) -> dict:
-    """{name: (state, center, R, unhidden fraction)} in the arm frame; center/R None if not posed."""
+    """{name: (state, center, R, unhidden fraction)} in the arm frame; center/R None if not posed. Raises
+    CameraMismatch if the snapshot's camera is not the calibrated one (stats["camera_serial"], from scripts.web_view)."""
+    cal.check_serial(stats.get("camera_serial"))
     out = {}
     for name, c in stats.get("cubes", {}).items():
         if not c.get("pos"):
@@ -126,7 +139,9 @@ class RestTracker:
 
 def read_cube(cal: CameraToBase, name: str):
     """Latest (state, center, R, unhidden fraction) of a cube in the arm frame; center/R None if not posed."""
-    c = json.load(urllib.request.urlopen(STATS, timeout=1))["cubes"].get(name, {})
+    s = json.load(urllib.request.urlopen(STATS, timeout=1))
+    cal.check_serial(s.get("camera_serial"))
+    c = s["cubes"].get(name, {})
     if not c.get("pos"):
         return c.get("state", "not seen"), None, None, 0.0
     return (c["state"], cal.point(np.array(c["pos"]) / 1000.0), cal.rotation(np.array(c["rot"])),
