@@ -5,7 +5,8 @@
 - the arm resting on its supports;
 - the arm upgraded answers at **192.168.1.3** (the PC needs a static address on 192.168.1.0/24); every
   command below passes `--ip 192.168.1.3` (the scripts default to .3);
-- the second arm stays on 1.8.3.
+- only the arm at .3 is touched. (The lab's second arm was also flashed to 1.9.4 on 2026-10-20, so it
+  needs driver 1.9.3 too.)
 
 **Environments.** `rlwx` runs perception and the arm scripts; `rlwx-train` runs the RL runner. Both have
 `trossen-arm==1.8.3` until step 4.
