@@ -313,7 +313,7 @@ class SafeArm:
         self._st = Streamer(rate, min(speed or self.limits.max_joint_speed, self.limits.max_joint_speed), accel, tau)
         self._st.reset(q)
         self._st_goal, self._st_recent = q.copy(), [q.copy()] * max(2, int(round(window * rate)))
-        self.stream_rejects = 0
+        self.stream_rejects, self.stream_brakes, self.floor_brakes = 0, 0, 0
         self._fb = dict(start=q, goal=q, effort=self.efforts(), speed=self._st.speed, lo=q.copy(), hi=q.copy())
 
     def stream_tick(self, q_goal, gripper_floor):
@@ -342,7 +342,20 @@ class SafeArm:
             q_next = np.clip(q_next, self.q_min, self.q_max)
             self._st.q, self._st.v = q_next.copy(), np.where(at, 0.0, self._st.v)
             v_next = self._st.v.copy()
-        self.check_target(q_next, last, n=2, gripper_floor=gripper_floor)
+        try:
+            self.check_target(q_next, last, n=2, gripper_floor=gripper_floor)
+            self.stream_brakes = 0
+        except SafetyStop:
+            # the generator brakes at a limited rate, so a full-speed dive at a goal near the floor overshoots it by
+            # 10-15 mm on the real arm (2026-10-31: twice the next point fell 1 mm below the floor and ended the
+            # attempt). Stop at the last commanded point instead (already checked) and go on from there; only if it
+            # keeps happening for 0.5 s is it a SafetyStop
+            self.stream_brakes += 1
+            self.floor_brakes += 1
+            if self.stream_brakes * self._st.dt >= 0.5:
+                raise
+            q_next, v_next = last.copy(), np.zeros(6)
+            self._st.q, self._st.v = q_next.copy(), np.zeros(6)
         self.drv.set_arm_positions(q_next, self._st.dt, False, v_next, np.zeros(6))
         self._st_recent = self._st_recent[1:] + [q_next]
         rec = np.array(self._st_recent)
@@ -364,6 +377,9 @@ class SafeArm:
         blocking=False, returns at once with the position the fingers are at now)."""
         position = self.limits.gripper_open if position is None else position
         position = float(np.clip(position, 0.0, 0.040))
+        # no faster than 0.08 m/s per finger: a fast open overshoots (0 -> 35 mm in 0.2 s ran past the 44 mm joint limit
+        # and stopped the controller, 2026-10-31)
+        duration = max(duration, abs(position - self.gripper_position()) / 0.08)
         self.drv.set_gripper_mode(ta.Mode.position)
         self.drv.set_gripper_position(position, duration, blocking)
         return self.gripper_position()
