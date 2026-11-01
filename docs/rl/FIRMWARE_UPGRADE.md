@@ -1,4 +1,12 @@
-# Upgrade day: driver 1.9.3 + firmware 1.9.x, then streaming
+# Firmware 1.9 upgrade and streaming bring-up
+
+**Done on 2026-10-20:**
+- the project arm moved from firmware 1.8.3 to 1.9.4, with driver `trossen-arm==1.9.3`;
+- 100 Hz streaming was brought up and system-identified.
+
+This page is the procedure, kept for upgrading another WidowX AI. The results are in
+[REPORT.md](REPORT.md#upgrade-day-2026-10-20-firmware-194-driver-193-and-streaming-on-the-real-arm). The policies named in step 7 have since been
+replaced by grab13 + place12 ([DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md)).
 
 **Before starting:**
 - someone at the power switch for every step that moves the arm;
@@ -31,7 +39,7 @@
 ~/micromamba/envs/rlwx/bin/python -m scripts.backup_arm_config --ip 192.168.1.3    # -> runs/arm_backup/arm_config_<time>_controller-1.8.3.yaml
 ```
 
-Copy the YAML off this PC (for example, attach it to a release in the private repo).
+Keep a copy of the YAML off this PC.
 
 ### 2. Flash firmware 1.9.x (newest on the downloads page; 1.9.4 per the changelog)
 

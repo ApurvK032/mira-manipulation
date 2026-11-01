@@ -1,4 +1,17 @@
-# RL-widowxai: reactive cube stacking on a WidowX AI
+# MIRA: original project plan
+
+This is the plan written when the project started (2026-10-16), kept as written. The [README](../README.md)
+describes the system as it is now.
+
+**How the phases turned out (as of 2026-10-31):**
+
+| Phase | Status |
+|---|---|
+| 0. Environment | Done. Native Ubuntu on the lab PC (RTX 4070), plus a shared RTX 5090 PC. Micromamba environments instead of a `uv` venv, because pym3t and librealsense come from conda-forge. |
+| 1. Perception proof of concept | Done. 0 wrong `TRACKING` frames in 16,274 simulated frames ([poc/README.md](poc/README.md)), and live on the D455 at about 60 fps. |
+| 2. Arm interface and scripted baseline | Done. 10/10 stacks in a reliability run ([reliability](reliability/run_20261016_174531.md)), and 2.1 mm RMS camera-to-arm calibration (18 poses, picked by the arm). |
+| 3. RL in simulation | Done, with a different design from the one planned: a learned grab, a scripted lift, then a learned placement (PPO on CPU-parallel MuJoCo). 72% stacked at the real gripper speed ([rl/REPORT.md](rl/REPORT.md)). |
+| 4. Sim-to-real | Underway. First real-arm runs on 2026-10-31: 8 of 12 attempts ended stacked. The comparison with the scripted controller under disturbance is next. |
 
 ## Goal
 
@@ -57,7 +70,7 @@ feed the same frame to both the detector and the tracker.
 - `get_gripper_position()` and `get_robot_output().cartesian` give gripper and end-effector state.
 - External efforts are available to detect contact and collisions.
 
-**trossen_arm_mujoco**: the WXAI MJCF model is already in `~/claude-code/hri/dex/third_party/`.
+**trossen_arm_mujoco**: Trossen's MJCF model of the WidowX AI (now vendored in `assets/trossen_arm_mujoco`).
 
 ## Phases
 
@@ -99,7 +112,7 @@ feed the same frame to both the detector and the tracker.
 
 **Status (2026-10-16): done in simulation.** 0 wrong `TRACKING` frames out of 16,274; moved cubes are
 found again in 0–1 frames; compute 6.3 ms for 2 cubes. All pass bars met except stack height (47.5 vs
-50 mm). Details: [docs/poc/README.md](docs/poc/README.md). Next: the same tests on the real D455.
+50 mm). Details: [docs/poc/README.md](poc/README.md). Next: the same tests on the real D455.
 
 Fixed D455, two or more matte cubes, arm parked. Exposure and white balance locked.
 

@@ -1,30 +1,80 @@
-# RL training report: night of 2026-10-17 (draft, not committed)
+# Reinforcement learning report
 
-## Summary
+This report covers MIRA's reinforcement learning work, from the first simulated environments (2026-10-17) to the
+first runs on the real arm (2026-10-31).
+- The [summary](#summary-as-of-2026-10-31) is current.
+- The sections after it are a dated log, oldest first. Each section's numbers are as of its date; later sections
+  supersede them.
+- How to run the policies on the arm: [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md).
 
-- **Skill B (grab a moving cube): works.**
-  - Final grab policy, trained with green on the table and realistic arm lag: **92.7% success, median 2.4 s**.
-  - It matches the hand-written grab on the same inputs, and is faster.
-- **Full stacking under interference, in simulation: 94% success** (141/150; 93% with simulated tracking dropouts)
-  from full-task starts (85% at 09:40; the afternoon runs cut knock-overs). That's a learned grab
-  policy, a short scripted lift, then a learned placement policy. The hand-written stacker manages 57% in the same
-  environment, even with perfect state.
+## Summary (as of 2026-10-31)
+
+- **Approach:**
+  - **The chain:** a learned grab policy, a short scripted lift, then a learned placement policy.
+  - **Training:** PPO, in MuJoCo, against a system-identified model of the WidowX AI while a simulated hand moves the
+    cubes.
+  - **Input:** cube poses from the markerless tracker, not images. The policies use the same perception as the
+    scripted controller.
+- **Simulation (grab13 + place12):**
+  - **72%** stacked over 150 full-task trials at the real gripper speed (108/150);
+  - **66%** with calibration, tracker, friction and mass errors added.
+  - Earlier policies reached 94% with an idealised instant gripper. Modelling the real gripper's speed dropped them
+    to 12%, and fine-tuning for it produced grab13 + place12.
+- **On the real arm (2026-10-31, grab13 + place12):**
+  - The grab policy picked up red in all 14 attempts after the first fixes.
+  - 8 of the 12 attempts that weren't stress tests ended with red stacked on green, and 4 met the runner's full
+    stacking rule (in 4.7–7.3 s).
+  - In 6 of those 12, a person moved the cubes mid-task. They ended stacked as often as the undisturbed ones (4 of 6
+    each).
+  - The main remaining failure is the place policy grabbing red again after letting go. See
+    [First real-arm runs of the RL chain](#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31).
 - **What didn't work, and why:**
-  1. A single end-to-end stacking policy learned carry, place and release (up to 91% on near-finished starts) but
-     never the grasp: with red under its fingers it acts as if already holding it.
-  2. My first arm-lag model made the arm slow instead of late. It's fixed (`lag_mode="target"`).
+  1. A single end-to-end stacking policy learned to carry, place and release (up to 91% on near-finished starts),
+     but never to grasp: with red under its fingers, it acts as if already holding it.
+  2. The first arm-lag model made the arm slow instead of late. It was replaced (`lag_mode="target"`).
   3. Three reward-design bugs, each found and fixed (details below).
-- **Not done yet:**
-  - running a policy on the real arm: the deployment runner `rl/deploy.py` is written and dry-tested only (see
-    "Deployment runner, dry only");
-  - the human-interference benchmark on hardware.
-- **Nothing committed or pushed.** New code is in `rl/` and this report; logs and checkpoints are in `runs/rl/`.
+- **Next:**
+  1. Stop the placement policy from re-grasping after the release.
+  2. Log joint efforts at every step.
+  3. Train with the real gripper's closing profile, and penalise fast dives near the table.
+  4. Benchmark the RL chain against the scripted controller, with a person interfering.
 
-All training in simulation (MuJoCo) on the lab PC: RTX 4070 (network), Ryzen 9 7900X (simulation, 20–24
-parallel copies). No real-arm motion. Code: `rl/` (new; uncommitted).
+## Contents
+
+- **Simulation (2026-10-17 to 2026-10-18)**
+  - [Setup](#setup)
+  - [Skill B: grab a moving cube (rl/envs/moving_cube.py)](#skill-b-grab-a-moving-cube-rlenvsmoving_cubepy)
+  - [Skill D: full stacking under interference (rl/envs/stack_cubes.py)](#skill-d-full-stacking-under-interference-rlenvsstack_cubespy)
+  - [Final numbers (09:40)](#final-numbers-0940)
+  - [Afternoon runs (14:10–15:35): fewer knock-overs, robust to tracking dropouts](#afternoon-runs-14101535-fewer-knock-overs-robust-to-tracking-dropouts)
+  - [System ID tools and a lag stress test (16:00)](#system-id-tools-and-a-lag-stress-test-1600)
+  - [Lag-robust runs (16:12–17:43): grab5 and place4](#lag-robust-runs-16121743-grab5-and-place4)
+  - [Deployment runner, dry only (RTX 5090 PC, 17:00–18:00)](#deployment-runner-dry-only-rtx-5090-pc-17001800)
+  - [Fine-tuning at the real arm's lag (RTX 5090 PC, 17:51–19:28): grab6 and place5, no improvement](#fine-tuning-at-the-real-arms-lag-rtx-5090-pc-17511928-grab6-and-place5-no-improvement)
+  - [The re-aim arm model (lab PC, 19:30–20:35): the deployment path is slower than the fitted lag](#the-re-aim-arm-model-lab-pc-19302035-the-deployment-path-is-slower-than-the-fitted-lag)
+  - [Feedforward re-aims and the speed ceiling of driver 1.8.3 (lab PC, 20:40–22:15)](#feedforward-re-aims-and-the-speed-ceiling-of-driver-183-lab-pc-20402215)
+  - [Fine-tuning for the real arm's motion: place6, hand-over starts (22:15–22:30)](#fine-tuning-for-the-real-arms-motion-place6-hand-over-starts-22152230)
+  - [place7 and grab8 results, and where the plateau is (00:05)](#place7-and-grab8-results-and-where-the-plateau-is-0005)
+  - [Grasp-precision fine-tunes: grab9 and grab10 (00:15–02:00)](#grasp-precision-fine-tunes-grab9-and-grab10-00150200)
+  - [Sim-to-real variations: sensitivity and a robustness fine-tune (02:30–)](#sim-to-real-variations-sensitivity-and-a-robustness-fine-tune-0230)
+- **Driver upgrade and streaming (2026-10-18 to 2026-10-20)**
+  - [What a driver upgrade would buy, in simulation (morning, 2026-10-18)](#what-a-driver-upgrade-would-buy-in-simulation-morning-2026-10-18)
+  - [Streaming for driver 1.9.3 (evening, 2026-10-18; the upgrade is planned for 2026-10-19)](#streaming-for-driver-193-evening-2026-10-18-the-upgrade-is-planned-for-2026-10-19)
+  - [Upgrade day (2026-10-20): firmware 1.9.4, driver 1.9.3, and streaming on the real arm](#upgrade-day-2026-10-20-firmware-194-driver-193-and-streaming-on-the-real-arm)
+- **The real arm, gripper and camera (2026-10-20 to 2026-10-21)**
+  - [The arm and camera on the RTX 5090 PC (evening, 2026-10-20): calibration, grip, first RL attempt](#the-arm-and-camera-on-the-rtx-5090-pc-evening-2026-10-20-calibration-grip-first-rl-attempt)
+  - [The real gripper's speed breaks grab12 + place11 (2026-10-21, simulation only)](#the-real-grippers-speed-breaks-grab12--place11-2026-10-21-simulation-only)
+  - [Fine-tuning for the real gripper speed: grab13 and place12 (lab PC, 2026-10-21, simulation only)](#fine-tuning-for-the-real-gripper-speed-grab13-and-place12-lab-pc-2026-10-21-simulation-only)
+- **First real-arm runs (2026-10-31)**
+  - [First real-arm runs of the RL chain (RTX 5090 PC, 2026-10-31)](#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)
+- [Code map](#code-map)
 
 ## Setup
 
+- **Hardware:**
+  - training on the lab PC: an RTX 4070 for the networks, and a Ryzen 9 7900X for the simulation (20–24 parallel
+    copies);
+  - some runs, and all real-arm sessions, on a shared RTX 5090 PC.
 - **Training environment:** a separate micromamba env `rlwx-train` (PyTorch 2.11 + CUDA 12.8, Stable-Baselines3 2.9,
   Gymnasium 1.4, MuJoCo 3.16), so the perception env `rlwx` is untouched.
 - **Algorithm:** PPO, MLP 256×256 (ELU), observation and reward normalization, 20 Hz control.
@@ -64,7 +114,7 @@ Success means the cube is lifted 4 cm and held for 0.5 s.
   - place: red held just above green.
 - **Arm lag:** the simulated arm's joint targets are low-pass filtered with a random 0–0.15 s time constant, standing
   in for the real arm's slower response.
-- **Held-cube start states:** all 134 sampled kept the cube in the gripper (a problem the Thunder project had to fix).
+- **Held-cube start states:** all 134 sampled kept the cube in the gripper (a problem other projects have had to fix).
 
 **Scripted stacker** (true state, with lag): **79% overall** (table 23/29, carry 15/19, near 13/19, place 12/13).
 
@@ -90,7 +140,7 @@ with green on the table as an obstacle, and keep training placement.
 
 ### Fixing the arm-lag model, then a better chain
 
-**A flaw in my lag model:** in the first lag model, each step's 1 cm move was measured from where the lagging
+**A flaw in the first lag model:** in the first lag model, each step's 1 cm move was measured from where the lagging
 fingertips were. So lag made the arm *slow*, not just *late*: at the strongest lag it moved at about 6 cm/s instead
 of 20. A grab policy trained with it never caught a cube in 4M steps (`grab2_ppo`).
 - **The fix, `lag_mode="target"`:** the policy moves a commanded target (at most 3 cm and 15° ahead of the
@@ -716,8 +766,8 @@ variations" = calibration error 3 mm / 1°, tracking bias 3 mm, friction ×0.6�
 - `lag_mode="stream"` in both envs: the generator at 100 Hz inside each 20 Hz step, with the acceleration cap
   (3–6 rad/s²) and approach time constant (0.04–0.1 s) randomized per episode. Old modes reproduce exactly.
 
-**Driver 1.9.3 compatibility (no arm):** every driver call our code makes exists in 1.9.3 with the same arguments, in a
-throwaway env. Details and the upgrade steps are in `docs/rl/UPGRADE_DAY.md`. New: `scripts/backup_arm_config.py`
+**Driver 1.9.3 compatibility (no arm):** every driver call the code makes exists in 1.9.3 with the same arguments, in a
+throwaway env. Details and the upgrade steps are in [FIRMWARE_UPGRADE.md](FIRMWARE_UPGRADE.md). New: `scripts/backup_arm_config.py`
 saves the controller's configuration with the current driver, before flashing.
 
 **Correction to the earlier upgrade estimate.** The 86–91% for an upgraded arm came from the first-order "target"
@@ -750,8 +800,8 @@ model, which has no speed or acceleration limit. Under the realistic streaming m
 
 ## Upgrade day (2026-10-20): firmware 1.9.4, driver 1.9.3, and streaming on the real arm
 
-**Upgrade.** Both lab arms were flashed to firmware 1.9.4 from a Linux PC over USB: the other arm (192.168.1.2,
-controller serial 16437950) and the project arm (192.168.1.3, serial 17786380).
+**Upgrade.** Both lab arms were flashed to firmware 1.9.4 from a Linux PC over USB: the second arm (192.168.1.2)
+and the project arm (192.168.1.3).
 - `trossen-arm==1.9.3` is now in rlwx and rlwx-train. `trossen183` is a separate env with 1.8.3, for any 1.8.3 arm.
 - Each arm's configuration was saved with the old driver before flashing and with the new one after. The
   backups are in `runs/arm_backup/`, with copies on the Windows Desktop.
@@ -925,16 +975,15 @@ results plus `gripper_speed`):
 
 ## Fine-tuning for the real gripper speed: grab13 and place12 (lab PC, 2026-10-21, simulation only)
 
-**Merged first:** `from5090-20261021-2027` (the 5090's real-arm session) and `from5090-20261021-2042-gripspeed` (the
-opt-in gripper speed).
-- Nothing on the lab PC had changed since `labpc-20261020-1736`, so both applied cleanly in order.
+**Merged first:** the RTX 5090 PC's real-arm session (2026-10-20) and its opt-in gripper speed (2026-10-21).
+- Nothing on the lab PC had changed since the last sync, so both applied cleanly in order.
 - Checks: the gripper-speed option is off by default, and grab12 + place11 on seed 4242 gives exactly 88.0% with the
   same failures as before the merge and on the 5090. `--lr` is honoured on resume (the schedule starts at 1e-4).
 
 **Training:** grab13 from grab12 (8M steps) and place12 from place11 (10M steps), side by side, 12 envs each, about
 1,900 and 1,350 steps/s.
 - Settings: each run's own settings plus `"gripper_speed": [0.048, 0.125], "gripper_speed_scale": [0.7, 1.3]`, at
-  lr 1e-4 (the commands in the gripspeed release notes).
+  lr 1e-4.
 - Training success: grab13 63% → about 73–76% (knock-overs 18% → 11%); place12 71% → about 75–78%.
 - Neither stalled by the 3M-step rule. place12 hovered around 75–77% for its last few million steps.
 
@@ -972,36 +1021,130 @@ opt-in gripper speed).
 **Next on the real arm:** `rl.deploy runs/rl/grab13_ppo/model runs/rl/place12_ppo/model --stream 100 --grip-mode effort
 --grip-force 18 --ip 192.168.1.3`. Placement knock-overs are the main remaining failure in simulation.
 
-## Next steps (suggested)
+## First real-arm runs of the RL chain (RTX 5090 PC, 2026-10-31)
 
-1. **Knock-overs are the main remaining failure.** Add contact-force penalties and train longer, or train the grab
-   and placement together as one hierarchical policy.
-2. **System ID on the real arm:**
-   - a short chirp motion with the user at the switch;
-   - fit the arm's lag and friction so the simulator's `lag_tau` and joint dynamics match the WidowX AI.
-3. **Deployment path:**
-   - feed the policies from the live perception (`scripts/web_view` stats) and send their targets through SafeArm's
-     smooth re-aims (`follow_goal`), which already match `lag_mode="target"`;
-   - test in dry mode first, then on the arm.
-4. **Human-interference benchmark on the real arm:** scripted controller vs RL chain.
+**Setup:**
+- grab13 + place12, with `--stream 100 --grip-mode effort --grip-force 18`.
+- The bench and camera were calibrated on 2026-10-20 (2.08 mm RMS). A pick-measured xy correction was added (below).
+- **The policies are unchanged.** Every fix below is in the runner or the arm wrapper.
+- The operator stood at the power switch throughout and filmed the attempts.
 
-## What this means and next steps
+**Result:** 17 attempts in five runner sessions.
+- **The first 3 attempts found hardware problems** (below). Each was fixed before the next session.
+- **The 14 attempts after that (sessions 4 and 5):**
+  - **the grab policy picked up red every time**, in about 2 s (1.4–3.3 s);
+  - **it set red down on green and let go in 11 of the 14**;
+  - **4 stacks met the runner's full rule**, in **4.7, 5.7, 5.5 and 7.3 s** from the start of the grab. The rule: red within 10 mm of green's centre, at the right height, upright, and released for 0.5 s;
+  - **4 more ended with red stacked on green but failed the rule.** The place policy grabbed red again after letting go (see "Main remaining failure");
+  - 2 were stress tests by the operator: green taken away just after the place, and green slid about 10 cm during the carry. Both ended in an effort-guard safety stop, as designed.
+- **In 6 of the other 12 attempts, a person moved the cubes mid-task.** Usually that meant pushing green during the carry; once it meant moving red during the reach.
+  - The run notes didn't record these. They were found by lining the phone videos up with the logs.
+- **Of those 12 attempts, 8 ended with red stacked on green:**
+  - **undisturbed:** 4 of 6 ended stacked, 3 meeting the full rule;
+  - **with a person moving the cubes:** 4 of 6 ended stacked, 1 meeting the full rule. In that one, green was pushed around during the carry; the place policy followed it and stacked in 7.3 s.
 
-1. **The pipeline works end to end** on this PC: environment, scripted baselines, GPU training, evaluation. A
-   training run of 10M steps takes about 45 minutes.
-2. **Sim-to-real is the next real step:**
-   - fit the simulated arm to the real WidowX AI (system ID: a chirp test motion on the arm, then fitting lag and
-     friction);
-   - make the policy's action interface match the deployment path (SafeArm's smooth re-aims);
-   - run it through our perception and safety wrapper.
-3. **The interference benchmark** (scripted vs RL, on the real arm) remains the result that matters.
+| Session | # | Runner outcome | s | Grab s | Re-grasps after release | Ends stacked | Person moving cubes | Notes |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | controller stop | about 3 | | | | | Missed grasp. Then a fast reopen ran past the gripper's 44 mm limit and the controller stopped (power cycle). |
+| 2 | 1 | safety | 0.9 | | | | | Dive overshoot: the next streamed point fell 1 mm below the floor. |
+| 3 | 1 | safety | 0.9 | | | | | The same, with the target floor 6 mm higher. |
+| 4 | 1 | safety (stress test) | 15 | 3.0 | 4 | | removed green | Red placed on green. Then the operator removed green, and the base guard tripped (2.3 Nm) during the rise. |
+| 4 | 2 | **stacked** | 4.7 | 2.1 | 0 | yes | | Released 1 mm from centre. |
+| 4 | 3 | dropped | 7.7 | 2.1 | 3 | yes | pushed green during the carry | Placed on green where it was pushed, then grabbed red again and closed on air. |
+| 4 | 4 | dropped | 6.2 | 1.8 | 2 | | | Set down 12 mm off-centre (cube off-centre in the grip). Red ended on the table just behind green. |
+| 4 | 5 | dropped | 10.9 | 2.1 | 4 | yes | pushed green during re-grasping | |
+| 4 | 6 | dropped | 3.5 | 1.4 | 1 | | moved green during the lift | On green, then grabbed again and closed on air. |
+| 4 | 7 | **stacked** | 5.7 | 2.3 | 1 | yes | | Released 1 mm from centre. |
+| 4 | 8 | dropped | 6.2 | 2.2 | 1 | | moved red during the reach, then green during the carry | Red ended on the table. |
+| 4 | 9 | safety (stress test) | about 2 | 1.9 | 1 | | slid green about 10 cm during the carry | The policy followed and placed; then green moved again. Joint 1 guard (−6.5 Nm). |
+| 5 | 1 | timeout | 15 | 2.2 | 9 | yes | | On green at 4.5 s, then re-grasping until the timeout. |
+| 5 | 2 | lost | 8.7 | 2.0 | 0 | yes | pushed green during the carry | Followed green and stacked on it. Tracking lost red in the grip, so the runner logged "lost". |
+| 5 | 3 | dropped | 9.6 | 3.3 | 3 | | | Cube 14 mm off-centre in the grip. Red ended on the table just behind green. |
+| 5 | 4 | **stacked** | 5.5 | 2.5 | 0 | yes | | |
+| 5 | 5 | **stacked** | 7.3 | 2.2 | 0 | yes | pushed green several times during the carry | Followed green and stacked on it. |
 
-## Files (all uncommitted)
+- Session 5 ran with the in-hand offset fix (below).
+- "Ends stacked" is the runner's own check right after the attempt ("Stacked. Watching.").
+- Grab times and re-grasp counts come from the per-step logs. The "Person" column comes from the phone videos.
+- **Videos:** [session 4](../media/rl_session4.mp4) (attempts 2–9) and [session 5](../media/rl_session5.mp4) (all of it), both at 2×. They are lined up with the logs to within about half a second, using the grasp moments.
 
-- `rl/envs/moving_cube.py`, `rl/envs/stack_cubes.py`: the environments.
-- `rl/train_ppo.py`, `rl/eval_policy.py`: training (`--env moving_cube|stack`, `--resume`) and evaluation.
-- `rl/scripted_check.py` (`--noisy`), `rl/scripted_stack.py`: scripted baselines and sanity checks.
-- `runs/rl/<run>/`: progress logs, TensorBoard logs, checkpoints.
-- `scripts/sysid_record.py`, `rl/sysid_fit.py`: system ID (record on the arm or `--dry`, then fit lag and delay).
-- `rl/deploy.py`, `rl/dry_world.py`, `rl/check_deploy_obs.py`: the deployment runner, its dry world and the observation
-  check; `docs/rl/DEPLOY_CHECKLIST.md` for the first real run. `runs/deploy/`: per-step logs and dry-run summaries.
+**What the real arm showed:**
+1. **The real gripper is slow to start closing.** In effort mode at 18 N, 35 → 25 mm took 0.35 s; training assumed
+   0.21 s.
+   - The grab policy closes and rises at the same time.
+   - In session 1 the fingertips were above the cube before the fingers reached it.
+2. **A fast position-mode open overshoots.** "Open to 35 mm in 0.2 s" from shut ran past the controller's limit
+   (40 mm plus 4 mm tolerance), and the controller stopped.
+   - It left the fingers at 47 mm, and every gripper command then tripped the limit again.
+   - A power cycle cleared it.
+   - Opens at about 0.044 m/s stop on target.
+3. **The grab policy dives at about 0.2 m/s.** The streaming generator brakes at a limited rate, so near the table the
+   real fingertips overshoot the target by 10–15 mm. Twice the next streamed point fell 1 mm below the hard floor. The
+   dry world doesn't show this: its arm stops on target.
+4. **Main remaining failure: grabbing red again after the release.** The place policy sets red down well, but then
+   often closes on it again and re-releases instead of letting go and holding still. The 0.5 s released check then
+   fails, and the runner reports "dropped" (closed on air) or "timeout", although red is usually left on green.
+   - Counted stacks had 0–1 re-grasps.
+   - The other placements had 1–9.
+5. **Off-centre grasps.** The grasp centres the cube between the fingers, but it can sit 12–16 mm off along the finger
+   pads. In training the cube is always centred, so the place policy lines up the fingertips, not the cube, with green.
+6. **The effort guards tripped only in the stress tests.** Per-step joint efforts aren't logged yet, so peak efforts in
+   normal attempts are unknown.
+
+**Changes (the policies are unchanged):**
+- **`robot/arm.py`:**
+  - `open_gripper` never opens faster than 0.08 m/s per finger.
+  - **Floor brake in `stream_tick`:** a streamed point below the floor or outside the workspace box stops the stream
+    at the last checked point and carries on. It raises a SafetyStop only if this lasts 0.5 s. The floor is still
+    never commanded.
+- **`rl/deploy.py`:**
+  - The policy opens the gripper at up to 0.07 m/s, and the wide open at up to 0.05 m/s.
+  - **Grip hold:** when the grab policy closes with the fingertips at red, the arm waits until the fingers stop, for
+    at most 0.8 s. `--no-grip-hold` turns this off.
+  - On the real arm the lowest fingertip target is 6 mm higher than in training (`TARGET_MARGIN`), so the dive
+    overshoot ends near the trained height.
+  - **In-hand offset fix:** red's offset from the fingertips is measured during the scripted lift. While red is carried,
+    both cubes are shifted by that offset in what the place policy sees. `--no-inhand-fix` turns this off.
+  - A stack counts only with the gripper commanded open.
+  - The end of an attempt always opens wide before rising.
+  - Wake refuses to start if the gripper reads past 43.5 mm.
+- **`rl/dry_world.py`:**
+  - The dry world uses the real close profile.
+  - Opens take the commanded time.
+  - With these, the dry run reproduced a bug: the policy closing again after the release carried red off the stack.
+    The end-of-attempt open fixes it.
+- **Calibration:**
+  - `scripts/pick_bias.py` measures where the gripper centres on the cube against where the camera puts it, over
+    4 picks.
+  - It found an xy correction of **(−5.9, +4.2) mm**, with residuals of 0.3 mm or less.
+  - The correction is saved as `xy_correction_m` in `assets/calibration.yaml`, and `robot/camera_frame.py` applies it.
+  - `scripts/pick_check.py` is a slow single-pick check.
+
+**The dry world now shows the main failure too.** With the real close profile, dry runs of the final code ended
+stacked in 2/4, 2/3 and 4/4 attempts on the 5090, and 2/5 on the lab PC (runner-counted 1/5, median 25.6 s). The
+misses look like the real ones: red set on green, then grabbed again until the timeout. Before these changes the dry
+world, with its faster gripper, stacked 4/5. A fix for the re-grasp can therefore be checked dry before the arm.
+
+**Next:**
+1. **Stop re-grasping after the release.** Freeze the arm with the gripper open once red sits on green, while the
+   0.5 s check runs. A first version exists but hasn't been run, dry or real; check it in the dry world first.
+2. **Log joint efforts** per step.
+3. **Train with the real close profile** and a penalty for diving fast near the table. The floor brake only works
+   around the dive.
+4. **Run the scripted controller and the RL chain side by side** with a person moving the cubes.
+
+## Code map
+
+| Path | What |
+|---|---|
+| `rl/envs/moving_cube.py`, `rl/envs/stack_cubes.py` | The grab and stacking environments |
+| `rl/envs/variations.py` | Per-episode sim-to-real variations (calibration error, tracker bias, friction, mass), off by default |
+| `rl/train_ppo.py`, `rl/eval_policy.py` | Training (`--env moving_cube\|stack`, `--resume`) and single-policy evaluation |
+| `rl/eval_chained.py`, `rl/eval_grip_speed.py` | Evaluation of the grab → lift → place chain, including at the real gripper speed |
+| `rl/record_handover.py` | Records the chain's real hand-over states, so the placement policy can train from them |
+| `rl/scripted_check.py`, `rl/scripted_stack.py` | Scripted baselines and sanity checks |
+| `scripts/sysid_record.py`, `rl/sysid_fit.py` | System identification: record on the arm (or `--dry`), then fit the motion model |
+| `rl/deploy.py`, `rl/dry_world.py`, `rl/check_deploy_obs.py` | The real-arm runner, its simulated stand-in, and the observation check |
+| `scripts/pick_bias.py`, `scripts/pick_check.py` | Measure and check the camera-to-arm xy correction by picking the cube |
+| `rl/make_sync_bundle.sh` | Packs uncommitted work, policies and logs to continue on another machine |
+| `runs/` (not in the repository) | Checkpoints, training logs, evaluation and deployment logs |

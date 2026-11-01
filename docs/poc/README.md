@@ -100,7 +100,7 @@ flickering light, all four cubes are `TRACKING` 100% of the time when they aren'
 
 ![teleport](teleport.gif) ![stack and knock](stack_knock.gif)
 
-### Against the Phase 1 pass bars ([PLAN.md](../../PLAN.md))
+### Against the Phase 1 pass bars ([PLAN.md](../PLAN.md))
 
 | Test | Bar | Simulation |
 |---|---|---|
