@@ -32,7 +32,7 @@ def main():
         out.mkdir(parents=True, exist_ok=True)
         path = out / f"arm_config_{time.strftime('%Y%m%d_%H%M%S')}_controller-{ctrl}.yaml"
         drv.save_configs_to_file(str(path))
-        print(f"saved {path} ({path.stat().st_size} bytes). Copy it off this PC too (e.g. into the private repo).")
+        print(f"saved {path} ({path.stat().st_size} bytes). Keep a copy off this PC too.")
     finally:
         drv.cleanup()
 

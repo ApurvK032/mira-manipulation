@@ -15,4 +15,3 @@ docs/camera_check/
 # local-only files
 MUJOCO_LOG.TXT
 assets/calibration_before_*.yaml
-docs/rl/HANDOFF_5090.md
