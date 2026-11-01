@@ -835,7 +835,7 @@ and the project arm (192.168.1.3).
 ## The arm and camera on the RTX 5090 PC (evening, 2026-10-20): calibration, grip, first RL attempt
 
 The project arm (192.168.1.3, firmware 1.9.4, driver 1.9.3) and the D455 are now connected to the RTX 5090 PC
-(native Ubuntu, shared, headless). Everything below was done with the user at the power switch.
+(native Ubuntu, shared, headless). Everything below was done with the operator at the power switch.
 
 **Setup.**
 - `rlwx` built with `scripts/setup_env.sh`. One fix: its env check also matched `rlwx-train`.

@@ -38,8 +38,9 @@ Two controllers share the same perception and safety layer:
 - **Built for human interference:** a person can move, remove or knock over the cubes mid-task.
 - **Sim-to-real reinforcement learning:**
   - the policies stack in 72% of simulated trials at the real gripper speed;
-  - on the real arm, the learned grab picked up the cube in 14 of 14 attempts;
-  - 8 of 12 real attempts ended stacked, including 4 of the 6 in which a person moved the cubes mid-task.
+  - on the real arm, the learned grab picked up the cube in 14 of 14 attempts after the first 3 setup attempts;
+  - 8 of 12 real attempts ended stacked (4 by the strict rule), including 4 of the 6 in which a person moved the
+    cubes mid-task.
 - **Safety first:**
   - every joint path is checked against a workspace box using the arm's MuJoCo model;
   - tracking-error and collision (effort) guards while moving;
@@ -86,7 +87,7 @@ frames and never reports a wrong pose as `TRACKING` ([details](docs/poc/README.m
 | Following a moving cube | **~0.25 s** lag; within 0.7 mm over a still cube |
 | Arm motion model (system ID) | Streamed motion on firmware 1.9.4 matches the simulator to **0.08°**, with about 0.13 s lag |
 | RL, simulation | **72%** stacked over 150 trials in which a simulated hand may move the cubes, at the real gripper speed; **66%** with calibration, tracker, friction and mass errors added ([docs/rl](docs/rl/REPORT.md)) |
-| RL, real arm (first test) | Learned grab: **14/14** picked up, in about 2 s. **8 of 12** attempts ended stacked, and **4** met the strict rule (released and still for 0.5 s), in **4.7–7.3 s**. With a person moving the cubes mid-task: **4 of 6** ended stacked (without: 4 of 6). The main failure is re-grasping after the release ([details](docs/rl/REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)) |
+| RL, real arm (first test) | Learned grab: **14/14** picked up after the first 3 setup attempts, in about 2 s. **8 of 12** attempts ended stacked, and **4** met the strict rule (released and still for 0.5 s), in **4.7–7.3 s**. With a person moving the cubes mid-task: **4 of 6** ended stacked (without: 4 of 6). The main failure is re-grasping after the release ([details](docs/rl/REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)) |
 
 ## How it works
 
@@ -317,7 +318,7 @@ If MIRA is useful in your work, please cite it:
 
 ```bibtex
 @software{mira_manipulation,
-  author = {K, Apurv},
+  author = {Kushwaha, Apurv},
   title  = {{MIRA}: Markerless Interactive Reactive Arm},
   year   = {2026},
   url    = {https://github.com/ApurvK032/mira-manipulation}
