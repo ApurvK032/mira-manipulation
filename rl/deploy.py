@@ -53,6 +53,12 @@ DEADBAND = 0.008  # rad: re-aim only when the joint target moved more than this 
 # real bench the table is 1-7 mm above the arm's base plane depending on where; in simulation it is at 0):
 TARGET_MIN = TIP_BOX["z"][0]  # m above the table: the lowest fingertip target, as in training (1.5 cm)
 FLOOR = 0.012  # m above the table: SafeArm's hard floor for the fingertip site (fingers end 4.5 mm below it)
+# m, real arm only: the policy's lowest target sits this much higher than in training. Diving at about 0.2 m/s, the
+# real fingertips overshoot the target by about 6 mm: at the trained 15 mm the next streamed point fell below the 12 mm
+# floor and SafeArm stopped the attempt (2026-10-31). With the margin the overshoot ends near the trained 15 mm. The
+# dry arm does not overshoot, so dry runs keep the trained floor (a 10 mm margin there: 1/4 first-attempt stacks
+# against 5/5 without).
+TARGET_MARGIN = 0.006
 TABLE_Z = (-0.005, 0.015)  # plausible table heights in the arm frame; outside this, use the nearest
 START_TIP, START_YAW = np.array([0.27, 0.0, 0.13]), np.pi / 2  # the system-ID hover pose; table starts hover 8-14 cm up
 MAX_STEPS = 300  # policy steps per attempt (15 s), as the training episodes
@@ -60,6 +66,19 @@ LOST_S, GIVE_UP_S = 0.5, 3.0
 HOLDING = (0.015, 0.031)  # finger position (m) when closed on a cube, as rl.envs.stack_cubes counts it
 RELEASED = 0.030  # finger position (m) the fingers must reach before the arm moves away from a released cube
 WIDE, WIDE_OK = 0.040, 0.036  # after a stack: open fully (driver max), and lift only past a 45-deg cube's corners (35.4)
+# m/s per finger, the fastest the runner opens the gripper: a fast position-mode open overshoots its target on the real
+# gripper. "Open to 35 mm in 0.2 s" from shut ran past the 44 mm joint limit and the controller stopped with a joint
+# limit error (2026-10-31); the 0.8 s wake open (about 0.044 m/s) stops on target.
+OPEN_SPEED, WIDE_SPEED = 0.07, 0.05
+# s: once the grab policy closes the gripper, the arm waits where it is until the fingers stop (on the cube, or shut on
+# air), at most this long. The real close starts slowly (35 -> 25 mm in 0.35 s; 0.21 s in training): a policy that
+# closes and rises at once lifted the fingertips past the cube's top before the fingers reached it (2026-10-31).
+GRIP_HOLD_S = 0.8
+# m: the largest in-hand offset the runner corrects for. In training the cube always sits centred between the fingers;
+# on the real arm it can hang 15-20 mm off along the finger pads, and the place policy, lining up the fingertips with
+# green, set red down 12-16 mm off-centre (2026-10-31). Measured during the scripted lift (straight up, so little camera
+# lag), the offset is taken out of what the place policy sees while it carries red: both cubes are shifted by it.
+INHAND_MAX = 0.025
 # Stacked, by StackCubes' success rule: red centred on green within 10 mm, the height difference in this band, both
 # upright (tilt < 8 deg), gripper open, for STACK_STEPS steps in a row (0.5 s). On the real arm the band is wider
 # because the tracker reads stacked cubes 4-5 mm short (REPORT.md, reliability run).
@@ -269,6 +288,8 @@ class Runner:
         self.last_status = None
         self.deadband = DEADBAND
         self.grip_mode, self.grip_force = "external_effort", GRIP_FORCE  # --grip-mode / --grip-force
+        self.grip_hold = True  # --no-grip-hold: let the grab policy move the arm while the fingers are still closing
+        self.inhand_fix = True  # --no-inhand-fix: give the place policy the cubes as seen (see INHAND_MAX)
         self.ff, self.gv = ff, GoalVelocity()  # ff: feedforward re-aims (robot.reaim), opt-in with --ff
         self.stream = stream  # Hz; > 0: stream targets (driver 1.9.3+, SafeArm.stream_tick) instead of re-aiming
         seeds = [np.array([0.0, a, b, w, 0, 0]) for a in (0.4, 0.9, 1.4) for b in (0.4, 1.0, 1.6) for w in (0.5, 1.2)]
@@ -369,6 +390,10 @@ class Runner:
     def wake(self):
         if np.abs(self.arm.q() - REST).max() > 0.15 and np.abs(self.arm.q() - WATCH).max() > 0.15:
             raise RuntimeError("arm is neither at rest nor at the watch pose; not starting")
+        g = self.arm.gripper_position()
+        if g > 0.0435:  # past the controller's 44 mm limit: any gripper command would stop the controller again
+            raise RuntimeError(f"the gripper reads {1000 * g:.1f} mm per finger, past its 44 mm limit: push the fingers "
+                               f"in by hand (to about 35 mm), then start again")
         self.status("Waking up: moving to the watch pose")
         self.arm.open_gripper(OPEN)
         self.move(WATCH, 0.8, "to watch pose")
@@ -396,7 +421,7 @@ class Runner:
             red = self.cubes.get("red")[0].p
         self.table_z = float(np.clip(red[2] - HALF, *TABLE_Z))
         self.pick_spot = red[:2].copy()
-        self.cmd.z_min = self.table_z + TARGET_MIN
+        self.cmd.z_min = self.table_z + TARGET_MIN + (0.0 if self.dry else TARGET_MARGIN)
         self.log(event="attempt", table_z=round(self.table_z, 4))
         self.status("Attempt: to the start pose")
         self.move(self.q_start, 0.8, "to start pose")
@@ -406,7 +431,8 @@ class Runner:
         self.gv.reset()
         self.holding, self._last_finger = False, 1.0
         st = dict(prev_action=np.zeros(5), hist={}, phase="grab", steps=0, stacked=0, z_close=None, hold_since=None,
-                  q_goal=self.arm.q(), t_aim=0.0, v_end=np.zeros(6))
+                  q_goal=self.arm.q(), t_aim=0.0, v_end=np.zeros(6), grip_hold=None,
+                  inhand=[], off=None, obs_prev=None)
         t0 = next_step = next_tick = time.time()
         tick = 1.0 / self.stream if self.stream else TICK
         self.status("Attempt: grab")
@@ -436,6 +462,10 @@ class Runner:
             next_tick = next_tick + tick if time.time() - next_tick < tick else time.time() + tick  # paced, no bursts
             time.sleep(max(0.0, next_tick - time.time()))
 
+    def open_to(self, position, speed, finger, shortest=0.25):
+        """Open the gripper (non-blocking) no faster than `speed` m/s per finger (see OPEN_SPEED)."""
+        self.arm.open_gripper(position, duration=max(shortest, abs(position - finger) / speed), blocking=False)
+
     def begin_motion(self):
         """Start following the policy's targets: streaming (driver 1.9.3+) or re-aiming (1.8.3)."""
         if self.stream:
@@ -451,7 +481,8 @@ class Runner:
         # arm, 2026-10-20, that read as a grasp while the arm happened to rise), and red's last fresh reading must be at
         # the fingertips when the grasp is first counted; then it stays counted while the fingers stay in range.
         in_range = self.cmd.closed and HOLDING[0] < m.finger < HOLDING[1]
-        settled = in_range and abs(m.finger - self._last_finger) < 0.0003
+        finger_still = abs(m.finger - self._last_finger) < 0.0003
+        settled = in_range and finger_still
         self._last_finger = m.finger
         if not in_range:
             self.holding = False
@@ -463,7 +494,8 @@ class Runner:
         cur, ages = {}, {}
         for n in ("red", "green"):
             cur[n], ages[n] = self.cubes.get(n)
-        if self.holding and ages["red"] > 0.1:  # the fingers hide it: it hangs from the fingertips
+        red_hidden = self.holding and ages["red"] > 0.1
+        if red_hidden:  # the fingers hide it: it hangs from the fingertips
             cur["red"], ages["red"] = Reading(m.tip - [0, 0, GRASP_Z], grip_yaw(m.R)), 0.0
         need = ("green",) if st["phase"] == "lift" else ("red", "green")
         lost = [n for n in need if ages[n] > LOST_S] + (["tracker"] if self.cubes.stale() else [])
@@ -496,27 +528,65 @@ class Runner:
         if st["phase"] == "lift" and (m.tip[2] > CARRY_Z - 0.005 or not self.holding):
             st["phase"] = "place"
             self.status("Attempt: place")
+        # in-hand offset (see INHAND_MAX): sampled during the lift, taken out of the place policy's view while holding
+        if st["phase"] == "lift" and self.holding and not red_hidden and ages["red"] <= 0.05:
+            st["inhand"].append((cur["red"].p - m.tip)[:2])
+        obs_cur, obs_prev = cur, prev
+        if st["phase"] == "place" and self.holding and self.inhand_fix:
+            if st["off"] is None:
+                smp = st["inhand"]
+                off = np.median(smp, axis=0) if len(smp) >= 3 else np.zeros(2)
+                if np.linalg.norm(off) > INHAND_MAX:
+                    off = off * INHAND_MAX / np.linalg.norm(off)
+                st["off"] = off
+                self.log(event="inhand_offset", off=off, samples=len(smp))
+            o = np.array([st["off"][0], st["off"][1], 0.0])
+            obs_cur = {"red": cur["red"] if red_hidden else Reading(cur["red"].p - o, cur["red"].yaw, cur["red"].tilt),
+                       "green": Reading(cur["green"].p - o, cur["green"].yaw, cur["green"].tilt)}
+            obs_prev = st["obs_prev"] or {n: Reading(prev[n].p - o, prev[n].yaw, prev[n].tilt) for n in prev}
+            st["obs_prev"] = obs_cur
+        else:
+            st["obs_prev"] = None
         if st["phase"] == "grab":
             a = self.grab(grab_obs(m, cur, prev, st["prev_action"]))
         elif st["phase"] == "lift":
             a = np.array([0.0, 0.0, 1.0, 0.0, 1.0])
         else:
-            a = self.place(stack_obs(m, cur, prev, st["prev_action"]))
+            a = self.place(stack_obs(m, obs_cur, obs_prev, st["prev_action"]))
         a = np.clip(np.asarray(a, dtype=float), -1, 1)
         was_closed = self.cmd.closed
         q_tgt, closed = self.cmd.step(a, m.tip, m.R)
+        if self.grip_hold and st["phase"] == "grab" and closed and not was_closed:  # see GRIP_HOLD_S
+            red, age = self.cubes.get("red")
+            if (red is not None and age <= LOST_S and np.linalg.norm(m.tip[:2] - red.p[:2]) < 0.02
+                    and abs(m.tip[2] - (red.p[2] + GRASP_Z)) < 0.02):  # only with the fingertips at red
+                st["grip_hold"] = (now, m.q.copy(), m.finger)
+                self.log(event="grip_hold", finger=m.finger, tip=m.tip)
+        if st["grip_hold"] is not None:
+            t_h, q_h, f_h = st["grip_hold"]
+            # until the fingers have moved and stopped (on the cube), or shut past a cube's width (on air), or timeout
+            if (not closed or st["phase"] != "grab" or (f_h - m.finger > 0.002 and finger_still)
+                    or m.finger < HOLDING[0] or now - t_h > GRIP_HOLD_S):
+                st["grip_hold"] = None
+                self.cmd.reset(m.q)  # the policy moves on from where the arm is
+                self.log(event="grip_hold_end", finger=m.finger, secs=round(now - t_h, 2))
+            else:
+                self.cmd.reset(q_h)
+            q_tgt = self.cmd.q_tgt
         self.gv.update(time.time(), q_tgt)
         if closed and not was_closed:
             self.arm.close_gripper(self.grip_force, settle=0.0, mode=self.grip_mode)
         elif was_closed and not closed:
-            self.arm.open_gripper(OPEN, duration=0.2, blocking=False)
+            self.open_to(OPEN, OPEN_SPEED, m.finger)
         st["prev_action"] = a
         st["steps"] += 1
 
         # stacked: StackCubes' success rule (see STACK_DZ), on the tracker's readings
         dz_lo, dz_hi = STACK_DZ["dry" if self.dry else "real"]
         red, green = cur["red"], cur["green"]
-        on = (st["phase"] == "place" and not self.holding and m.finger > HOLDING[1]
+        # commanded open too: a policy that closes again after the release still reads open for about 0.2 s (the real
+        # close starts slowly), and the arm then carried red off the stack (dry run with the real close, 2026-10-31)
+        on = (st["phase"] == "place" and not self.holding and not self.cmd.closed and m.finger > HOLDING[1]
               and np.linalg.norm(red.p[:2] - green.p[:2]) < 0.010 and dz_lo < red.p[2] - green.p[2] < dz_hi
               and red.tilt < 8 and green.tilt < 8)
         st["stacked"] = st["stacked"] + 1 if on else 0
@@ -540,19 +610,19 @@ class Runner:
         if self.holding:
             self.put_back()  # ends 13 cm up with the gripper open
         else:
-            if not self.cmd.closed:
-                # open all the way first: a cube turned about 45 deg to the fingers (70.7 mm across its corners) can
-                # stay wedged in the policies' 35 mm-per-finger opening and be carried up (seen in a dry run)
-                self.arm.open_gripper(WIDE, duration=0.3, blocking=False)
-                t0 = time.time()
-                while self.arm.gripper_position() < WIDE_OK and time.time() - t0 < 1.0:
-                    time.sleep(TICK)
-                g = self.arm.gripper_position()
-                if g < RELEASED:
-                    raise SafetyStop(f"gripper did not open (reads {1000 * g:.0f} mm)")
-                if g < WIDE_OK:
-                    raise SafetyStop(f"gripper stopped at {1000 * g:.1f} mm opening wide: the cube may be wedged "
-                                     f"between the fingers; not lifting")
+            # not holding: open all the way before rising, even if the policy last commanded closed. A cube turned
+            # about 45 deg to the fingers (70.7 mm across its corners) can stay wedged in the policies' 35 mm-per-finger
+            # opening and be carried up (seen in a dry run)
+            self.open_to(WIDE, WIDE_SPEED, self.arm.gripper_position(), shortest=0.3)
+            t0 = time.time()
+            while self.arm.gripper_position() < WIDE_OK and time.time() - t0 < 1.2:
+                time.sleep(TICK)
+            g = self.arm.gripper_position()
+            if g < RELEASED:
+                raise SafetyStop(f"gripper did not open (reads {1000 * g:.0f} mm)")
+            if g < WIDE_OK:
+                raise SafetyStop(f"gripper stopped at {1000 * g:.1f} mm opening wide: the cube may be wedged "
+                                 f"between the fingers; not lifting")
             # 4 cm if the wrist allows it; near a joint limit (seen in a dry run: joint 3) a shorter rise still clears
             # a released cube, and with none possible the path-checked move to WATCH is the way out
             tip, R = self.tip()
@@ -697,6 +767,10 @@ def main():
     ap.add_argument("--latency", type=float, default=0.033, help="dry only: simulated tracker latency (s)")
     ap.add_argument("--dropout", type=float, default=0.0, help="dry only: chance per frame a cube goes unseen")
     ap.add_argument("--no-hands", action="store_true", help="dry only: nobody slides the cubes")
+    ap.add_argument("--no-inhand-fix", action="store_true",
+                    help="give the place policy the cubes as seen, without taking out red's offset in the grip")
+    ap.add_argument("--no-grip-hold", action="store_true",
+                    help="let the grab policy move the arm while the fingers are still closing (before 2026-10-31)")
     ap.add_argument("--dry-instant-gripper", action="store_true",
                     help="dry only: the simulated gripper moves at once (the training envs' default) instead of at the "
                          "real gripper's speed")
@@ -747,6 +821,8 @@ def main():
         src.start()
     run = Runner(arm, src, cal, grab, place, args.dry, log_path, world, ff=args.ff, stream=args.stream)
     run.grip_mode, run.grip_force = args.grip_mode, args.grip_force
+    run.grip_hold = not args.no_grip_hold
+    run.inhand_fix = not args.no_inhand_fix
     run.deadband = args.deadband
     print(f"log: {log_path}", flush=True)
     results = None

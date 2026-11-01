@@ -29,11 +29,15 @@ def rot_z(a):
 
 
 REAL_GRIPPER_SPEED = (0.048, 0.125)  # m/s per finger closing / opening: the real gripper, firmware 1.9.4 (2026-10-20)
+# the real effort-mode close (18 N) does not start at full speed: about 0.05 s before it moves, then it speeds up at
+# about 0.23 m/s^2 to 0.068 m/s; 35 -> 25 mm took 0.35 s (2026-10-31 real run, runs/deploy/run_20261031_193236.jsonl)
+REAL_CLOSE_PROFILE = (0.05, 0.23, 0.068)  # s delay, m/s^2, m/s
 
 
 class SimWorld(threading.Thread):
     def __init__(self, cal, env_kwargs, seed=0, latency=0.033, fps=60.0, noise=0.0015, yaw_noise_deg=2.0,
-                 dropout=0.0, hands=True, hand_delay=2.0, gripper_speed=REAL_GRIPPER_SPEED):
+                 dropout=0.0, hands=True, hand_delay=2.0, gripper_speed=REAL_GRIPPER_SPEED,
+                 close_profile=REAL_CLOSE_PROFILE):
         super().__init__(daemon=True)
         kw = dict(env_kwargs)
         if not hands:
@@ -45,6 +49,8 @@ class SimWorld(threading.Thread):
         # the gripper moves at the real gripper's speed (None: at once, as the training envs by default); with the
         # instant gripper, a gripper closing on air never looked like a grasp in dry runs (it did on the real arm)
         self.gripper_speed = gripper_speed
+        # closing: delay, acceleration, top speed as the real gripper (None: constant gripper_speed[0])
+        self.close_profile, self._close_since = close_profile, None
         self.rng = np.random.default_rng(seed)
         self.lock = threading.Lock()
         self.arm = None  # the SimDryArm whose commands drive the scene
@@ -68,6 +74,7 @@ class SimWorld(threading.Thread):
                 h["start"] += self.hand_delay
                 h["end"] += self.hand_delay
             e.steps, self.sim_t, self.t0 = 0, 0.0, time.time()
+            self._close_since = None
             self.pushes, self.next_ctrl, self.next_frame = {}, 0.0, 0.0
             self.frames, self.unseen = [], {"red": 0.0, "green": 0.0}
             self.was_grasped = False
@@ -110,7 +117,15 @@ class SimWorld(threading.Thread):
             if self.gripper_speed is None:
                 d.ctrl[6] = goal
             else:
-                v = self.gripper_speed[0] if goal < d.ctrl[6] else self.gripper_speed[1]
+                closing = goal < d.ctrl[6]
+                if closing and self.close_profile is not None:
+                    if self._close_since is None:
+                        self._close_since = self.sim_t
+                    delay, acc, vmax = self.close_profile
+                    v = min(vmax, acc * max(0.0, self.sim_t - self._close_since - delay))
+                else:
+                    self._close_since = None
+                    v = self.gripper_speed[0] if closing else min(self.gripper_speed[1], self.arm.grip_open_v)
                 step = v * e.m.opt.timestep
                 d.ctrl[6] += min(max(goal - d.ctrl[6], -step), step)
         for n, pv in self.pushes.items():
@@ -174,6 +189,7 @@ class SimDryArm(DryArm):
     def __init__(self, world: SimWorld):
         super().__init__()
         self.world, self.grip_cmd = world, OPEN
+        self.grip_open_v = 1.0  # m/s: the last open's commanded speed (capped by the world's gripper_speed)
         world.arm = self
 
     def q_cmd(self):
@@ -192,6 +208,8 @@ class SimDryArm(DryArm):
         return self.world.read()[2]
 
     def open_gripper(self, position=OPEN, duration=0.8, blocking=True):
+        # as the real position-mode open: it arrives in `duration` (no faster than the real gripper's top speed)
+        self.grip_open_v = max(abs(position - self.gripper_position()) / max(duration, 1e-3), 0.005)
         self.grip_cmd = position
         if blocking:
             time.sleep(duration)
