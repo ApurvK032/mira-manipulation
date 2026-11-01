@@ -245,7 +245,7 @@ robot/        safety wrapper, IK, grasp planning, follower, streaming, always-on
 sim/          MuJoCo bench scene (D455-like noise, hand, distractors), scenarios, render worker
 rl/           RL environments (grab, stack), PPO training and evaluation, system-ID fit, real-arm runner
 scripts/      live view, calibration, bring-up and stacking tests, follow mode, system ID, sim evaluation, camera tools
-assets/       cube colors, calibration, Trossen's MuJoCo arm model (BSD-3), table texture
+assets/       cube colors, calibration, Trossen's MuJoCo arm model and table texture (BSD-3)
 docs/         demo media, perception proof of concept, calibration checks, reliability runs, RL report and
               real-arm procedures, original project plan
 ```
@@ -301,8 +301,9 @@ Mirrored networking is also required for the arm, whose UDP stream doesn't reach
 
 - [DLR-RM/3DObjectTracking](https://github.com/DLR-RM/3DObjectTracking) (M3T) and its Python bindings
   [pym3t](https://github.com/agimus-project/pym3t), cloned and built by `scripts/setup_env.sh`.
-- [Trossen Robotics](https://github.com/TrossenRobotics) for the WidowX AI driver and the MuJoCo model in
-  `assets/trossen_arm_mujoco` (BSD 3-Clause, see `assets/LICENSE.trossen_arm_mujoco`).
+- [Trossen Robotics](https://github.com/TrossenRobotics) for the WidowX AI driver, the MuJoCo model in
+  `assets/trossen_arm_mujoco` and the table texture `assets/maple_tabletop.png`, both from their
+  `trossen_arm_mujoco` package (BSD 3-Clause, see `assets/LICENSE.trossen_arm_mujoco`).
 
 ## License
 
@@ -310,7 +311,8 @@ Copyright (c) 2026 Apurv Kushwaha. All rights reserved. The source is public to 
 use, copying, modification or redistribution without written permission (see [LICENSE](LICENSE)). To ask for
 permission, open an issue.
 
-The Trossen MuJoCo model in `assets/trossen_arm_mujoco` keeps its own BSD 3-Clause license.
+Trossen's MuJoCo model in `assets/trossen_arm_mujoco` and its table texture `assets/maple_tabletop.png` keep
+their own BSD 3-Clause license (`assets/LICENSE.trossen_arm_mujoco`).
 
 ## Citation
 
