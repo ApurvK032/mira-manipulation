@@ -2,6 +2,10 @@
 
 A calibration belongs to one camera: check_serial() refuses a live camera whose serial differs from the one the
 file was fitted with, so another camera can never silently use it (ignore_serial=True overrides, deliberately).
+
+Optional xy_correction_m: [x, y] (m), measured by scripts/pick_bias.py: how far the camera places a cube from where the
+gripper actually centres on it (the arm or camera moved a few mm since the fit). point() subtracts it. A new fit
+(scripts.calibrate_camera) writes a file without it.
 """
 
 from pathlib import Path
@@ -29,6 +33,8 @@ class CameraToBase:
         self.rms_mm = c.get("rms_mm")
         self.serial = str(c["camera_serial"]) if c.get("camera_serial") else None
         self.ignore_serial = ignore_serial
+        xy = c.get("xy_correction_m") or [0.0, 0.0]
+        self.xy_correction = np.array([float(xy[0]), float(xy[1]), 0.0])
 
     def check_serial(self, live):
         """Raise CameraMismatch unless `live` (the live camera's serial; None if the source does not report one) is
@@ -39,8 +45,8 @@ class CameraToBase:
             raise CameraMismatch(mismatch_message(live or "unknown", self.serial or "unknown"))
 
     def point(self, p_cam):
-        """Camera-frame point (m) -> arm base frame (m)."""
-        return self.T[:3, :3] @ (self.k * np.asarray(p_cam, dtype=float)) + self.T[:3, 3]
+        """Camera-frame point (m) -> arm base frame (m), with the measured xy correction (if any) removed."""
+        return self.T[:3, :3] @ (self.k * np.asarray(p_cam, dtype=float)) + self.T[:3, 3] - self.xy_correction
 
     def rotation(self, R_cam):
         return self.T[:3, :3] @ np.asarray(R_cam, dtype=float)

@@ -437,7 +437,7 @@ def pick_and_run(arm, qs, ok, speed, dry=False, grip_z=GRIP_Z):
     if not serial:
         print("live perception does not report the camera serial (update scripts.web_view); not starting")
         return
-    cal, ik = CameraToBase(), IK()
+    cal, ik = CameraToBase(ignore_serial=True), IK()  # only the starting guess; a calibration run is for a new or moved camera
     c, R = read_cube_now(cal)
     if c is None:
         print(f"the {CUBE} cube is not seen steadily: put it flat on the table in front of the arm")

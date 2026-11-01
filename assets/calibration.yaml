@@ -32,3 +32,8 @@ rms_mm: 2.075
 max_mm: 3.345
 data: runs/calib/calib_20261020_184729.json
 stream: 848x480 color, depth aligned to color
+xy_correction_m:
+- -0.00586
+- 0.00418
+xy_correction_note: 'scripts/pick_bias.py 2026-10-31 19:26: 4 picks, runs/calib/pick_bias_20261031_192616.json;
+  previous [0.0, 0.0] mm'
