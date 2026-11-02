@@ -37,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rl.envs.moving_cube import CTRL_DT, GRASP_Z, HALF, OPEN, TIP_BOX, down_rotation, wrap
+from rl.envs.moving_cube import CTRL_DT, GRASP_Z, HALF, OPEN, RING, TIP_BOX, down_rotation, wrap
 from rl.envs.stack_cubes import CARRY_Z, STACK_STEPS
 from robot.arm import REST, WATCH, SafeArm, SafetyStop
 from robot.camera_frame import CameraMismatch, CameraToBase
@@ -83,6 +83,22 @@ INHAND_MAX = 0.025
 # upright (tilt < 8 deg), gripper open, for STACK_STEPS steps in a row (0.5 s). On the real arm the band is wider
 # because the tracker reads stacked cubes 4-5 mm short (REPORT.md, reliability run).
 STACK_DZ = {"dry": (0.046, 0.056), "real": (0.040, 0.058)}
+# Release ends placing (see Runner.stack_freeze): once the place policy has let go of red over green (red within
+# RELEASE_XY of green's centre, height difference in RELEASE_DZ), the arm stops as soon as red reads down on green
+# (height difference below the stacked band's top) or RELEASE_SETTLE_S after the release, whichever comes first, and
+# stays still while the stacked rule above is checked, for at most RELEASE_HOLD_S; then the attempt ends either way.
+# Not at the release itself: the policy lets go 1-2 cm above green while still moving down, and the opening fingers
+# guide red down (a dry run that stopped the arm at the release left red off the stack twice in five).
+RELEASE_XY = 0.030
+RELEASE_DZ = (0.035, 0.075)
+RELEASE_SETTLE_S = 0.4
+RELEASE_HOLD_S = {"dry": 3.0, "real": 1.2}  # dry: the simulated gripper opens slower and its tracker is noisier
+# After a failed attempt (not a stack, not a SafetyStop) the arm rises straight up to RETRY_Z and, if red is seen on
+# the table within RETRY_WAIT_S, the next attempt starts from there instead of going to WATCH and the start pose
+# (operator's request, 2026-11-01). The policies were trained from anywhere 8-14 cm above the ring (RING), so a start
+# from there is in their training range; outside the ring, or when red is not seen, it goes the usual way.
+RETRY_Z = 0.12
+RETRY_WAIT_S = 1.0
 PUT_BACK_Z = 0.14  # m above the table: fingertip height carrying red back (its bottom 10.5 cm up, 5.5 cm over a cube)
 HYSTERESIS = 0.3  # binary gripper as trained: switching needs |action| above this
 GRIP_FORCE = 15.0  # N (robot.arm.Limits.gripper_force)
@@ -290,6 +306,16 @@ class Runner:
         self.grip_mode, self.grip_force = "external_effort", GRIP_FORCE  # --grip-mode / --grip-force
         self.grip_hold = True  # --no-grip-hold: let the grab policy move the arm while the fingers are still closing
         self.inhand_fix = True  # --no-inhand-fix: give the place policy the cubes as seen (see INHAND_MAX)
+        # --no-stack-freeze: keep following the policy after red is set down on green. The place policy was trained
+        # in episodes that end 0.5 s after a stack, so it never learned to back off: on the real arm it set red down,
+        # then grasped it again (2026-10-31) or kept moving down around the stack (2026-11-01), and the 0.5 s
+        # released-and-still check rarely passed. With the freeze, the arm stops and stays still with the gripper open
+        # when the policy lets go of red over green (RELEASE_XY), or when red first sits on green released (the
+        # stacked rule); the stack is then judged for at most RELEASE_HOLD_S and the attempt ends either way
+        # ("placed_off" if the rule did not pass). Readings that jump while frozen do not release it.
+        self.stack_freeze = True
+        self.retry = True  # --no-retry-here: after a failed attempt always go back via WATCH and the start pose
+        self.retry_here = False  # set by end_attempt when the next attempt starts where the arm is (RETRY_Z)
         self.ff, self.gv = ff, GoalVelocity()  # ff: feedforward re-aims (robot.reaim), opt-in with --ff
         self.stream = stream  # Hz; > 0: stream targets (driver 1.9.3+, SafeArm.stream_tick) instead of re-aiming
         seeds = [np.array([0.0, a, b, w, 0, 0]) for a in (0.4, 0.9, 1.4) for b in (0.4, 1.0, 1.6) for w in (0.5, 1.2)]
@@ -357,6 +383,7 @@ class Runner:
 
     def to_watch(self, stoppable=True):
         """Up to 13 cm if the fingertips are low, then to WATCH (cubes in full view)."""
+        self.retry_here = False
         tip, _ = self.tip()
         if tip[2] < 0.11 and np.abs(self.arm.q() - WATCH).max() > 0.02:
             self.straight_to(0.13, 0.5, "rise", stoppable)
@@ -415,16 +442,20 @@ class Runner:
 
     # ----- one attempt: grab -> lift -> place -----
     def attempt(self):
-        """Returns (outcome, seconds). Outcomes: stacked, timeout, lost, dropped. Raises Stop / SafetyStop."""
+        """Returns (outcome, seconds). Outcomes: stacked, placed_off, placed_unseen, timeout, lost, dropped. Raises Stop / SafetyStop."""
         red = self.cubes.median("red")
         if red is None:
             red = self.cubes.get("red")[0].p
         self.table_z = float(np.clip(red[2] - HALF, *TABLE_Z))
         self.pick_spot = red[:2].copy()
         self.cmd.z_min = self.table_z + TARGET_MIN + (0.0 if self.dry else TARGET_MARGIN)
-        self.log(event="attempt", table_z=round(self.table_z, 4))
-        self.status("Attempt: to the start pose")
-        self.move(self.q_start, 0.8, "to start pose")
+        self.log(event="attempt", table_z=round(self.table_z, 4), from_here=bool(self.retry_here))
+        if self.retry_here:  # see RETRY_Z
+            self.retry_here = False
+            self.status("Attempt: again from here")
+        else:
+            self.status("Attempt: to the start pose")
+            self.move(self.q_start, 0.8, "to start pose")
         self.arm.open_gripper(OPEN)
         self.begin_motion()
         self.cmd.reset(self.arm.q(), closed=False)
@@ -432,7 +463,7 @@ class Runner:
         self.holding, self._last_finger = False, 1.0
         st = dict(prev_action=np.zeros(5), hist={}, phase="grab", steps=0, stacked=0, z_close=None, hold_since=None,
                   q_goal=self.arm.q(), t_aim=0.0, v_end=np.zeros(6), grip_hold=None,
-                  inhand=[], off=None, obs_prev=None)
+                  inhand=[], off=None, obs_prev=None, frozen=None, frozen_t=None, released=None, release_dz=None)
         t0 = next_step = next_tick = time.time()
         tick = 1.0 / self.stream if self.stream else TICK
         self.status("Attempt: grab")
@@ -451,6 +482,8 @@ class Runner:
             if st["hold_since"] is not None:
                 if now - st["hold_since"] > GIVE_UP_S:
                     return "lost", now - t0
+                if self.stream:  # keep streaming toward the stop point (see stop_point)
+                    self.arm.stream_tick(self.cmd.q_tgt, self.table_z + FLOOR)
             elif self.stream:  # one smooth point per tick toward the current target
                 self.arm.stream_tick(self.cmd.q_tgt, self.table_z + FLOOR)
             elif now - st["t_aim"] >= REAIM and (np.abs(self.cmd.q_tgt - st["q_goal"]).max() > self.deadband
@@ -465,6 +498,21 @@ class Runner:
     def open_to(self, position, speed, finger, shortest=0.25):
         """Open the gripper (non-blocking) no faster than `speed` m/s per finger (see OPEN_SPEED)."""
         self.arm.open_gripper(position, duration=max(shortest, abs(position - finger) / speed), blocking=False)
+
+    def stop_point(self):
+        """Where the streamed motion comes to rest if it brakes now at the generator's own rate, all joints together.
+        A target there stops the arm smoothly; a target at the measured position makes the generator reverse, and that
+        jerk on a fast swing read as a collision on the base joint (2026-11-01). Without streaming: where the arm is."""
+        st = getattr(self.arm, "_st", None)
+        if not self.stream or st is None or st.v is None:
+            return self.arm.q()
+        q_stop = st.q + st.v * float(np.abs(st.v).max()) / (2 * st.accel)
+        try:  # a stop point the generator would refuse (below the floor, out of the box): its last checked point
+            self.arm.check_target(np.clip(q_stop, self.arm.q_min, self.arm.q_max), st.q, n=11,
+                                  gripper_floor=self.table_z + FLOOR)
+        except SafetyStop:
+            return st.q.copy()
+        return q_stop
 
     def begin_motion(self):
         """Start following the policy's targets: streaming (driver 1.9.3+) or re-aiming (1.8.3)."""
@@ -497,19 +545,24 @@ class Runner:
         red_hidden = self.holding and ages["red"] > 0.1
         if red_hidden:  # the fingers hide it: it hangs from the fingertips
             cur["red"], ages["red"] = Reading(m.tip - [0, 0, GRASP_Z], grip_yaw(m.R)), 0.0
-        need = ("green",) if st["phase"] == "lift" else ("red", "green")
+        # (while frozen after placing, the open fingers often hide red: that is not a reason to hold or give up)
+        need = ("green",) if st["phase"] == "lift" or st["frozen"] is not None else ("red", "green")
         lost = [n for n in need if ages[n] > LOST_S] + (["tracker"] if self.cubes.stale() else [])
         if lost:
             if st["hold_since"] is None:
                 st["hold_since"] = now
-                self.arm.hold()
+                if self.stream:  # brake smoothly (see stop_point); the attempt loop keeps streaming toward it
+                    self.cmd.reset(self.stop_point())
+                else:
+                    self.arm.hold()
                 self.status(f"Holding: {', '.join(lost)} not seen")
                 self.log(event="hold", lost=lost)
             return None
         if st["hold_since"] is not None:  # seen again: carry on from where the arm stopped
             st["hold_since"] = None
-            self.begin_motion()
-            self.cmd.reset(m.q)
+            if not self.stream:
+                self.begin_motion()
+            self.cmd.reset(self.stop_point() if self.stream else m.q)
             self.gv.reset()
             st["q_goal"], st["v_end"] = m.q, np.zeros(6)
             self.status(f"Attempt: {st['phase']}")
@@ -528,6 +581,44 @@ class Runner:
         if st["phase"] == "lift" and (m.tip[2] > CARRY_Z - 0.005 or not self.holding):
             st["phase"] = "place"
             self.status("Attempt: place")
+        # stack freeze (see self.stack_freeze). Engaged when red sits on green, released, by the stacked rule below
+        # without the commanded-open term, or when red has come down after the policy let go of it over green (see
+        # RELEASE_SETTLE_S); any close the policy just commanded is undone. Once engaged the policy no longer moves
+        # the arm in this attempt.
+        if self.stack_freeze and st["phase"] == "place":
+            dz_lo, dz_hi = STACK_DZ["dry" if self.dry else "real"]
+            red, green = cur["red"], cur["green"]
+            on = (not self.holding and m.finger > HOLDING[1] and ages["red"] <= 0.1
+                  and np.linalg.norm(red.p[:2] - green.p[:2]) < 0.010 and dz_lo < red.p[2] - green.p[2] < dz_hi
+                  and red.tilt < 8 and green.tilt < 8)
+            # after letting go over green: stop once red is down (already at the release, or read so since), or the
+            # camera has lost it behind the opening fingers, or RELEASE_SETTLE_S has passed
+            landed = (st["released"] is not None and not self.holding
+                      and (st["release_dz"] < dz_hi or red.p[2] - green.p[2] < dz_hi or ages["red"] > 0.1
+                           or now - st["released"] > RELEASE_SETTLE_S))
+            if (on or landed) and st["frozen"] is None:
+                st["frozen"], st["frozen_t"] = self.stop_point(), now  # brake smoothly (see stop_point)
+                self.log(event="stack_freeze", why="on green" if on else "after release", finger=m.finger,
+                         closed=bool(self.cmd.closed), xy=round(float(np.linalg.norm(red.p[:2] - green.p[:2])), 4),
+                         dz=round(float(red.p[2] - green.p[2]), 4))
+                if self.cmd.closed:
+                    self.cmd.closed = False
+                    self.open_to(OPEN, OPEN_SPEED, m.finger)
+            if st["frozen"] is not None:
+                self.cmd.reset(st["frozen"])
+                self.gv.update(time.time(), self.cmd.q_tgt)
+                st["stacked"] = st["stacked"] + 1 if on else 0
+                self.log(phase="place", a=np.zeros(5), tip=m.tip, target=self.cmd.tip_target, q=m.q, q_tgt=self.cmd.q_tgt,
+                         finger=m.finger, red=red.p, green=green.p, frozen=True,
+                         age=[round(min(ages["red"], 99), 3), round(min(ages["green"], 99), 3)])
+                if st["stacked"] >= STACK_STEPS:
+                    return "stacked"
+                if now - st["frozen_t"] > RELEASE_HOLD_S["dry" if self.dry else "real"]:
+                    unseen = ages["red"] > 0.2  # still hidden by the fingers: judged from the watch pose afterwards
+                    self.log(event="release_hold_end", xy=np.linalg.norm(red.p[:2] - green.p[:2]),
+                             dz=red.p[2] - green.p[2], red_age=round(min(ages["red"], 99), 3))
+                    return "placed_unseen" if unseen else "placed_off"
+                return None
         # in-hand offset (see INHAND_MAX): sampled during the lift, taken out of the place policy's view while holding
         if st["phase"] == "lift" and self.holding and not red_hidden and ages["red"] <= 0.05:
             st["inhand"].append((cur["red"].p - m.tip)[:2])
@@ -578,6 +669,12 @@ class Runner:
             self.arm.close_gripper(self.grip_force, settle=0.0, mode=self.grip_mode)
         elif was_closed and not closed:
             self.open_to(OPEN, OPEN_SPEED, m.finger)
+            if self.stack_freeze and st["phase"] == "place" and self.holding and st["released"] is None:
+                red, green = cur["red"], cur["green"]
+                xy, dz = float(np.linalg.norm(red.p[:2] - green.p[:2])), float(red.p[2] - green.p[2])
+                if xy < RELEASE_XY and RELEASE_DZ[0] < dz < RELEASE_DZ[1]:  # let go over green (see RELEASE_SETTLE_S)
+                    st["released"], st["release_dz"] = now, dz
+                    self.log(event="release_over_green", xy=round(xy, 4), dz=round(dz, 4), finger=m.finger)
         st["prev_action"] = a
         st["steps"] += 1
 
@@ -602,10 +699,11 @@ class Runner:
             return "timeout"
         return None
 
-    def end_attempt(self):
+    def end_attempt(self, retry=False):
         """Stop where the arm is (the last re-aim is not finished), put back anything held; otherwise let the fingers
         finish opening, rise straight up 4 cm (an open gripper moving sideways or rising early can drag a released
-        cube and tip the stack), and only then go to WATCH."""
+        cube and tip the stack), and only then go to WATCH. retry (a failed attempt): stay above the work area for the
+        next attempt instead, where that is possible (see RETRY_Z, retry_from_here)."""
         self.arm.hold()
         if self.holding:
             self.put_back()  # ends 13 cm up with the gripper open
@@ -634,7 +732,29 @@ class Runner:
                     break
             else:
                 self.log(event="no_rise", tip=tip)
+        if retry and self.retry_from_here():
+            return
         self.to_watch()
+
+    def retry_from_here(self):
+        """See RETRY_Z: rise straight up to RETRY_Z and wait up to RETRY_WAIT_S for red on the table; True when the next
+        attempt can start here (self.retry_here set), False to go the usual way."""
+        tip, _ = self.tip()
+        if not (RING[0] <= float(np.hypot(tip[0], tip[1])) <= RING[1]) or tip[2] > 0.16:
+            return False
+        if tip[2] < RETRY_Z:
+            self.straight_to(RETRY_Z, 0.5, "rise to retry")
+        t0 = time.time()
+        while time.time() - t0 < RETRY_WAIT_S:
+            self.poll()
+            if self.pending in ("pause", "rest"):
+                return False
+            if self.red_on_table()[0]:
+                self.retry_here = True
+                self.log(event="retry_here", tip=self.tip()[0])
+                return True
+            time.sleep(0.05)
+        return False
 
     def red_on_table(self):
         """Red is seen resting on the table within reach (not on green): time for an attempt."""
@@ -720,7 +840,7 @@ class Runner:
                 outcome, secs = self.attempt()
                 if dry_eps and outcome == "stacked":
                     in_place = self.world.truth()
-                self.end_attempt()
+                self.end_attempt(retry=self.retry and outcome != "stacked")
             except Stop:
                 continue
             except SafetyStop as e:
@@ -767,6 +887,10 @@ def main():
     ap.add_argument("--latency", type=float, default=0.033, help="dry only: simulated tracker latency (s)")
     ap.add_argument("--dropout", type=float, default=0.0, help="dry only: chance per frame a cube goes unseen")
     ap.add_argument("--no-hands", action="store_true", help="dry only: nobody slides the cubes")
+    ap.add_argument("--no-retry-here", action="store_true",
+                    help="after a failed attempt go back via the watch pose and the start pose (before 2026-11-01)")
+    ap.add_argument("--no-stack-freeze", action="store_true",
+                    help="keep following the place policy after it lets go of red on green (before 2026-11-01)")
     ap.add_argument("--no-inhand-fix", action="store_true",
                     help="give the place policy the cubes as seen, without taking out red's offset in the grip")
     ap.add_argument("--no-grip-hold", action="store_true",
@@ -823,6 +947,8 @@ def main():
     run.grip_mode, run.grip_force = args.grip_mode, args.grip_force
     run.grip_hold = not args.no_grip_hold
     run.inhand_fix = not args.no_inhand_fix
+    run.stack_freeze = not args.no_stack_freeze
+    run.retry = not args.no_retry_here
     run.deadband = args.deadband
     print(f"log: {log_path}", flush=True)
     results = None
