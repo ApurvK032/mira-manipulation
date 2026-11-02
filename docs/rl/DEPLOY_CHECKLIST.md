@@ -1,9 +1,10 @@
 # Running the RL policies on the real arm
 
 This page explains how to run the learned chain on the WidowX AI with `rl/deploy.py`: grab policy → scripted lift →
-placement policy. It is the procedure used for the first real-arm runs on 2026-10-31. Their results, and the reason
-behind each safeguard below, are in
-[REPORT.md](REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31).
+placement policy. It is the procedure used for the real-arm runs on 2026-10-31 and 2026-11-01. Their results, and
+the reason behind each safeguard below, are in REPORT.md:
+[2026-10-31](REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31) and
+[2026-11-01](REPORT.md#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01).
 
 **Someone must be at the arm's power switch whenever it can move.**
 
@@ -35,18 +36,25 @@ D455 ─► scripts.web_view (env rlwx: perception, 127.0.0.1:8080) ─stats.jso
    - When the policy closes at red, the arm holds still until the fingers stop (at most 0.8 s), because the real
      gripper starts closing slowly.
 3. **Scripted lift** to 12 cm. Red's offset in the grip is measured here.
-4. **Placement policy,** until the stack check passes for 0.5 s:
+4. **Placement policy,** until it lets go of red over green. While red is carried, both cubes are shifted by red's
+   in-hand offset in what the policy sees.
+5. **Release ends placing.** Once the policy lets go of red within 30 mm of green's centre, at stack height, the arm
+   stops when red reads down, when the opening fingers hide it, or after 0.4 s. The policy no longer moves the arm in
+   this attempt. The arm holds still for up to 1.2 s while the stack check runs. The check must pass for 0.5 s:
    - red centred on green within 10 mm, with 40–58 mm between the cube centres (stacked cubes read 4–5 mm short);
-   - both cubes tilted less than 8°, and the gripper commanded open.
-   While red is carried, both cubes are shifted by red's in-hand offset in what the policy sees.
-5. **Release.** The gripper opens fully (40 mm per finger). The arm rises only once the fingers read at least
-   36 mm, because a cube turned 45° to the fingers can wedge. Then back to the watch pose.
+   - both cubes tilted less than 8°, and the gripper open;
+   - a fresh reading of red (0.1 s old or less).
+6. **End.** The gripper opens fully (40 mm per finger). The arm rises only once the fingers read at least 36 mm,
+   because a cube turned 45° to the fingers can wedge. Then back to the watch pose, or, after a failed attempt, retry
+   from here (below).
 
 **Outcomes:**
 
 | Outcome | Meaning |
 |---|---|
 | `stacked` | The stack check passed. |
+| `placed_off` | Red was let go over green, but the stack check didn't pass within the hold (usually red 10–21 mm off centre). |
+| `placed_unseen` | As `placed_off`, but red was still hidden by the fingers; the check from the watch pose decides. |
 | `dropped` | The gripper closed on nothing during the lift or the placement. |
 | `lost` | A cube was unseen for 3 s. The arm holds after 0.5 s and resumes if the cube reappears. |
 | `timeout` | 15 s passed. If red is still held, it is carried back at 14 cm and set down; there is no scripted stacking. |
@@ -54,6 +62,9 @@ D455 ─► scripts.web_view (env rlwx: perception, 127.0.0.1:8080) ─stats.jso
 
 - **After an attempt:** if red sits on green, the page shows "Stacked. Watching." and the runner waits. Otherwise the
   next attempt starts.
+- **Retry from here:** after a failed attempt (not a safety stop), the arm rises straight up to 12 cm. If red is seen
+  on the table within 1 s, and the arm is within 20–34 cm of the base, the next attempt starts there instead of from
+  the watch pose and the start pose.
 - **On exit** (Ctrl-C, SIGTERM or an error): the runner puts down anything held and returns the arm to rest with the
   brakes on.
 
@@ -78,8 +89,12 @@ D455 ─► scripts.web_view (env rlwx: perception, 127.0.0.1:8080) ─stats.jso
    - **A small xy offset:**
      - measure a correction with `py -m scripts.pick_bias --save` (4 picks; it backs up `assets/calibration.yaml`);
      - confirm it with a second `scripts.pick_bias` run (about 0 mm) or `scripts.pick_check`.
-   - **A moved camera:** recalibrate with `py -m scripts.calibrate_camera pick --prior-current` (about 10 min; back up
-     `assets/calibration.yaml` first).
+   - **A moved camera, or a moved or remounted arm:** recalibrate with
+     `py -m scripts.calibrate_camera pick --prior-current` (about 10 min; back up `assets/calibration.yaml` first), then
+     measure the xy correction and verify it as above.
+     - On 2026-11-01, remounting the arm shifted the calibration by about 5 mm. Grabs with red to one side then closed
+       too high, and the fingers came down on red.
+     - The calibration in the repository predates the arm's move, so do this before the next session.
 5. **Gripper:**
    - Opened to 40 mm, it must read at least 36 mm per finger; otherwise every stack ends in a pause.
    - If it reads past 43.5 mm (beyond the controller's 44 mm limit), push the fingers in by hand first. The runner
@@ -114,6 +129,8 @@ D455 ─► scripts.web_view (env rlwx: perception, 127.0.0.1:8080) ─stats.jso
 | Option | Effect |
 |---|---|
 | `--dry` | A simulated arm and scene in real time. It never reads the page's buttons, so it can't drive the real arm. |
+| `--no-stack-freeze` | Keep following the placement policy after it lets go of red (the behaviour before 2026-11-01; it re-grasps). |
+| `--no-retry-here` | After a failed attempt, always go back via the watch pose and the start pose. |
 | `--no-grip-hold` | Let the grab policy move while the fingers are still closing. |
 | `--no-inhand-fix` | Give the placement policy the cubes as seen, without correcting for red's offset in the grip. |
 | `--ip` | The arm's address (default 192.168.1.3). |
@@ -121,13 +138,21 @@ D455 ─► scripts.web_view (env rlwx: perception, 127.0.0.1:8080) ─stats.jso
 
 ## What to watch
 
-- **Re-grasping after the release** (the main failure on 2026-10-31):
-  - The placement policy sets red on green, then closes on it again instead of holding still.
-  - The runner then reports `dropped` or `timeout`, though red is often left on green.
-  - A fix is being prepared: freeze the arm with the gripper open once red rests on green.
+- **Cube spots** (the cause of most stops on 2026-11-01):
+  - The policies were trained with cubes 20–34 cm from the base, but the runner still starts with red up to 36 cm.
+  - At 34–40 cm the grab dives short and a finger lands on red. With green 35 cm or more out, the arm reaches full
+    stretch and overshoots. Both trip the joint-1 guard.
+  - Place both cubes 20–34 cm out (25–32 cm is safest).
+- **Placement:** red often lands 10–21 mm off centre, mostly about 9 mm toward the arm. The runner then reports
+  `placed_off`. Re-grasping after the release (the main failure on 2026-10-31) is prevented by the release stop; with
+  `--no-stack-freeze` it comes back.
 - **Effort guards** (base 2.3 Nm, joint 1 6.3 Nm):
-  - So far they tripped only when a person removed green, or slid it, during the carry.
+  - Joint 1 trips when a finger lands on red, and when lifting off a cube that a finger rests on.
+  - The base trips when a pushed green makes the arm swing fast while carrying red (pushes of 11–22 cm).
   - A trip holds the arm. If trips become frequent, slow the motion rather than loosening a guard.
+- **After a stop with a finger on red:** Go to rest can trip the guard again, the runner then exits, and the idle arm
+  sags onto the cube. Instead, slide the cube out while the arm holds, then press Resume. Or open the gripper alone
+  and run `py -m scripts.to_rest`.
 - **Fast dives near the table:**
   - The grab policy dives at about 0.2 m/s, and the stream can overshoot by 10–15 mm.
   - A streamed point below the floor stops the stream at the last checked point. A SafetyStop follows only if this

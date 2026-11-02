@@ -1,13 +1,13 @@
 # Reinforcement learning report
 
 This report covers MIRA's reinforcement learning work, from the first simulated environments (2026-10-17) to the
-first runs on the real arm (2026-10-31).
-- The [summary](#summary-as-of-2026-10-31) is current.
+real-arm runs of 2026-10-31 and 2026-11-01.
+- The [summary](#summary-as-of-2026-11-01) is current.
 - The sections after it are a dated log, oldest first. Each section's numbers are as of its date; later sections
   supersede them.
 - How to run the policies on the arm: [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md).
 
-## Summary (as of 2026-10-31)
+## Summary (as of 2026-11-01)
 
 - **Approach:**
   - **The chain:** a learned grab policy, a short scripted lift, then a learned placement policy.
@@ -26,18 +26,33 @@ first runs on the real arm (2026-10-31).
     stacking rule (in 4.7–7.3 s).
   - In 6 of those 12, a person moved the cubes mid-task. They ended stacked as often as the undisturbed ones (4 of 6
     each).
-  - The main remaining failure is the place policy grabbing red again after letting go. See
+  - The main remaining failure was the place policy grabbing red again after letting go. See
     [First real-arm runs of the RL chain](#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31).
+- **On the real arm (2026-11-01, same policies, runner fixed during the day):**
+  - **60 attempts, 19 counted stacks,** median 4.6 s from the start of the grab (3.5–12.2 s). The code changed
+    between sessions and many attempts were disturbance tests, so this is not a benchmark.
+  - **With the final code and no deliberate disturbance: 6 of 15 counted.** With both cubes inside the trained range
+    (20–34 cm from the base) at the start: 5 of 8.
+  - **The re-grasp is fixed in the runner, not in the policy.** Once the policy lets go of red over green, the arm
+    stops and the stack is judged ("release ends placing"). No attempt re-grasped from the stack after that.
+  - **The policies follow moving cubes:**
+    - the grab still stacked after red was slid up to 19 cm;
+    - the place policy set red on a green moved 18–21 cm;
+    - a stack knocked over was rebuilt.
+  - **20 safety stops,** all from the arm wrapper's guards. 11 began with a cube beyond the trained range.
+  - **The arm remount shifted the calibration by about 5 mm;** a pick-measured correction brought it to 0.6 mm.
+  - See [Second real-arm day](#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01).
 - **What didn't work, and why:**
   1. A single end-to-end stacking policy learned to carry, place and release (up to 91% on near-finished starts),
      but never to grasp: with red under its fingers, it acts as if already holding it.
   2. The first arm-lag model made the arm slow instead of late. It was replaced (`lag_mode="target"`).
   3. Three reward-design bugs, each found and fixed (details below).
-- **Next:**
-  1. Stop the placement policy from re-grasping after the release.
-  2. Log joint efforts at every step.
-  3. Train with the real gripper's closing profile, and penalise fast dives near the table.
-  4. Benchmark the RL chain against the scripted controller, with a person interfering.
+- **Next** (the arm has been moved to other projects; these wait for it):
+  1. Start attempts only with both cubes in the trained range, and make the put-back after a stop more robust.
+  2. Measure and correct the placement bias (red lands about 9 mm toward the arm).
+  3. Retrain the place policy to release at stack height and back off, with the real gripper's closing profile and a
+     slower dive near the table.
+  4. Recalibrate, then a clean benchmark: fixed cube spots, the scripted controller and the RL chain on the same day.
 
 ## Contents
 
@@ -65,8 +80,9 @@ first runs on the real arm (2026-10-31).
   - [The arm and camera on the RTX 5090 PC (evening, 2026-10-20): calibration, grip, first RL attempt](#the-arm-and-camera-on-the-rtx-5090-pc-evening-2026-10-20-calibration-grip-first-rl-attempt)
   - [The real gripper's speed breaks grab12 + place11 (2026-10-21, simulation only)](#the-real-grippers-speed-breaks-grab12--place11-2026-10-21-simulation-only)
   - [Fine-tuning for the real gripper speed: grab13 and place12 (lab PC, 2026-10-21, simulation only)](#fine-tuning-for-the-real-gripper-speed-grab13-and-place12-lab-pc-2026-10-21-simulation-only)
-- **First real-arm runs (2026-10-31)**
+- **Real-arm runs (2026-10-31 to 2026-11-01)**
   - [First real-arm runs of the RL chain (RTX 5090 PC, 2026-10-31)](#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)
+  - [Second real-arm day: release, retry and recalibration (RTX 5090 PC, 2026-11-01)](#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01)
 - [Code map](#code-map)
 
 ## Setup
@@ -1066,7 +1082,7 @@ results plus `gripper_speed`):
 - Session 5 ran with the in-hand offset fix (below).
 - "Ends stacked" is the runner's own check right after the attempt ("Stacked. Watching.").
 - Grab times and re-grasp counts come from the per-step logs. The "Person" column comes from the phone videos.
-- **Videos:** [session 4](../media/rl_session4.mp4) (attempts 2–9) and [session 5](../media/rl_session5.mp4) (all of it), both at 2×. They are lined up with the logs to within about half a second, using the grasp moments.
+- **Videos:** [session 4](../media/rl_session4.mp4) (attempts 2–9) and [session 5](../media/rl_session5.mp4) (all of it), both at 2×. [The first counted stack](../media/rl_first_stack.gif) (session 4, attempt 2) in real time. They are lined up with the logs to within about half a second, using the grasp moments.
 
 **What the real arm showed:**
 1. **The real gripper is slow to start closing.** In effort mode at 18 N, 35 → 25 mm took 0.35 s; training assumed
@@ -1132,6 +1148,295 @@ world, with its faster gripper, stacked 4/5. A fix for the re-grasp can therefor
 3. **Train with the real close profile** and a penalty for diving fast near the table. The floor brake only works
    around the dive.
 4. **Run the scripted controller and the RL chain side by side** with a person moving the cubes.
+
+## Second real-arm day: release, retry and recalibration (RTX 5090 PC, 2026-11-01)
+
+**Setup:**
+- grab13 + place12, unchanged, with `--stream 100 --grip-mode effort --grip-force 18`.
+- The arm had been taken off the bench and remounted since 2026-10-31. That moved the calibration by about 5 mm, and
+  it was corrected during the day (see "Calibration" below).
+- **The runner changed during the day, in four steps (A–D below).** Each change was dry-run before it went on the arm.
+  The policies and the arm wrapper didn't change.
+- The operator was at the power switch, moved the cubes for the disturbance series, and filmed with a phone.
+
+**Result:** 60 attempts in eight runner sessions, with **19 counted stacks**. A counted stack meets the runner's full
+rule: red within 10 mm of green's centre, at stack height, upright, released and still for 0.5 s. The median time was
+**4.6 s** from the start of the grab (range 3.5–12.2 s). 18 of the 19 were with the freeze. The other was in the
+two-attempt check without it.
+
+**These numbers are not one benchmark:**
+- the code changed between sessions;
+- the cube spots weren't fixed;
+- many attempts were disturbance tests.
+
+The cleanest numbers:
+- **Final code (C and D), no deliberate disturbance (session 5, attempts 1–15): 6 of 15 counted.**
+  - **With both cubes inside the trained range (20–34 cm from the base) at the start: 5 of 8.**
+  - The 3 misses: two placed 11–21 mm off centre, and one with green hidden by a hand.
+  - The in-range rule applies to successes and failures alike: one stack with green 37 cm out isn't in the 5.
+- **Series 1, still cubes (session 5, attempts 9–15): 4 of 7 counted,** in 3.5, 5.5, 5.0 and 5.5 s.
+  - All 3 failures had green 35 cm out.
+  - All 3 attempts with both cubes in range stacked.
+- **Red slid by hand during the grab (series 2, 6 attempts): 2 counted.**
+  - 12.2 s, with red moved up to 19 cm from where it started.
+  - 9.4 s, with red moved up to 14.5 cm.
+  - In the recovery clips, red was slid 12.6 cm and green moved 20.6 cm, and red still ended on green (13 mm off).
+- **Green pushed during the carry (series 3, 12 attempts): 2 counted**, one of them without a push.
+  - The place policy followed green and set red on it after pushes of up to 18.5 cm (14 mm off, so not counted).
+  - Pushes of 11–22 cm, with a fast follow, tripped the 2.3 Nm base-joint guard (3 attempts).
+- **Recovery clips (session 8, 8 attempts): 4 counted.** This includes red knocked off a finished stack and stacked
+  again in 4.2 s.
+- **Retry from here** (new in C) ran 4 times: 2 counted stacks, and 2 placed on green 10–14 mm off.
+- **Without the freeze (session 7, 2 attempts):**
+  - one counted stack: the policy let go and held still on its own;
+  - one where the policy pressed red into green until the joint-1 guard stopped it.
+  - Two attempts are too few to compare.
+
+**All 60 outcomes:**
+
+| stacked | placed off | placed, unseen | lost | dropped | timeout | safety stop |
+|---|---|---|---|---|---|---|
+| 19 | 10 | 1 | 5 | 4 | 1 | 20 |
+
+**Does the re-grasp still happen?**
+- **With the patch as given (A): once.** The freeze let go when red's reading jumped. The policy closed again, then
+  hovered until the timeout (session 3, attempt 1).
+- **From B on: never.** Once the policy has let go of red over green, it no longer moves the arm, so it can't
+  re-grasp from the stack. It didn't in any attempt.
+
+**Safety stops (20):**
+- All came from the arm wrapper's guards; the arm controller never faulted.
+- **11 began with a cube 35–39 cm from the base**, beyond the trained 20–34 cm.
+- By cause:
+  - **Joint-1 effort when a finger landed on red after a short grab: 9.** Red was to one side before the
+    calibration fix, or a cube was 34–40 cm out.
+  - **Other joint-1 effort: 4.**
+    - Lifting with the fingers pinching red's top edge.
+    - Red catching green's edge on the way in.
+    - Red pressed into green without the freeze.
+    - Braking at full reach with green 35 cm out.
+  - **Base-joint effort (2.3 Nm): 7.**
+    - Abrupt stops of a fast swing: 2, fixed by the smooth stop (D).
+    - A finger brushing green while turning: 1.
+    - Friction sliding red across green: 1.
+    - Fast swings following a green pushed 11–22 cm: 3.
+- **Recovery lifts after a stop are not counted as attempts.** Some tripped the guard because a finger rested on red.
+  - Twice the runner exited, and the idle arm sagged onto red.
+  - Once (without the freeze), the put-back had no reachable lift pose 36.5 cm out, and the operator powered the arm
+    off and laid it on its rests.
+
+**Code versions:**
+
+| Code | What changed |
+|---|---|
+| A | The freeze patch as written on 2026-10-31: freeze while red sits on green, released; let go if red moves off. |
+| B | **Release ends placing:** after the policy lets go of red over green, the arm stops, holds 3 s while the stack is judged, and the attempt ends either way. |
+| C | Stop as soon as red reads down or is hidden by the fingers. Hold 1.2 s. Red hidden while frozen is not "lost". The count needs fresh readings. **Retry from here.** |
+| D | C plus the **smooth stop.** |
+
+**Per-attempt table:**
+- **Series:** 1 still cubes; 2 red slid during the grab; 3 green pushed during the carry; 5 no freeze; R recovery
+  clips; blank for setup and tuning.
+- **Freeze / let go:** the number of `stack_freeze` and `stack_unfreeze` events.
+- **Sides:** + is the arm's left (the right of the camera image).
+- **Cube distances:** from the arm base at the start of the attempt.
+
+| Session | Code | # | Series | Outcome | s | Red cm (side) | Green cm (side) | Freeze / let go | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 (18:04) | A | 1 |  | **stacked** | 4.0 | 33 (-7) | 31 (+11) | 2 / 1 | Watched attempt. Freeze engaged twice, let go once. |
+|  |  | 2 |  | safety |  | 29 (+1) | 39 (-14) |  | Both cubes moved during the grab; a finger came down on red. Stop: 6.8 Nm on joint 1. |
+|  |  | 3 |  | safety |  | 31 (-12) | 31 (+8) |  | Red 12 cm to the side: closed at red's top edge, came back down onto red. Stop: 6.5 Nm on joint 1. |
+| 2 (18:15) | A | 1 |  | safety |  | 29 (-9) | 30 (+7) |  | Closed on red's top edge (fingers stopped at 18 mm). The lift, Go to rest and shutdown all tripped the guard; runner exited and the arm sagged onto red. Released with a gripper-only open; operator power-cycled. Stop: -6.3 Nm on joint 1. |
+| 3 (18:41) | A, new correction | 1 |  | timeout | 15.0 | 32 (-1) | 32 (+13) | 1 / 1 | First attempt after the calibration fix: grab exact. Freeze let go on a reading jump; the policy re-closed, then hovered. Red ended on green 20 mm off. |
+|  |  | 2 |  | **stacked** | 4.2 | 28 (-5) | 37 (+12) | 4 / 3 | Freeze engaged 4 times, let go 3 times. |
+|  |  | 3 |  | safety |  | 23 (-5) | 38 (-7) | 1 / 1 | Green 38 cm out: released 22 mm off; red hidden; the arm came down beside green while turning. Stop: -2.4 Nm on joint 0. |
+| 4 (18:53) | B | 1 |  | **stacked** | 3.5 | 31 (-1) | 30 (+13) | 1 / 0 | Release ends placing (B). |
+|  |  | 2 |  | safety |  | 31 (-9) | 39 (+15) |  | Red 9 cm to the side, green 39 cm: grab short, finger on red. Stop: 6.4 Nm on joint 1. |
+|  |  | 3 |  | safety |  | 34 (-7) | 34 (+14) |  | Red 34 cm, 7 cm to the side: grab short, finger on red. Stop: 6.9 Nm on joint 1. |
+|  |  | 4 |  | lost | 7.9 | 35 (+9) | 36 (-12) | 1 / 0 | Red hidden after the release; the arm went 3 cm lower during the 0.4 s settle. Red ended on green. |
+|  |  | 5 |  | dropped | 4.8 | 20 (-7) | 34 (+3) |  | Red 20 cm out. |
+|  |  | 6 |  | lost | 7.2 | 20 (+2) | 35 (+5) | 1 / 0 | Red 20 cm out; hidden after the release. Ended on green. |
+|  |  | 7 |  | **stacked** | 4.2 | 32 (-13) | 36 (+10) | 1 / 0 |  |
+|  |  | 8 |  | placed_off | 8.0 | 33 (-12) | 32 (+12) | 1 / 0 | Placed 15 mm off. |
+|  |  | 9 |  | lost | 5.2 | 33 (+1) | 32 (+12) |  | Cubes moved by hand. |
+|  |  | 10 |  | safety |  | 32 (-10) | 32 (+12) |  | Finger on red; Go to rest and shutdown lifts tripped; runner exited. Stop: 7.5 Nm on joint 1. |
+| 5 (19:12) | C | 1 |  | placed_off | 4.2 | 31 (-2) | 32 (+12) | 1 / 0 | C: stop at once when red is down or hidden, 1.2 s hold, retry from here. |
+|  |  | 2 |  | placed_off | 5.0 | 28 (-9) | 36 (+11) | 1 / 0 |  |
+|  |  | 3 |  | safety |  | 32 (-3) | 36 (+11) |  | Green hidden during the carry; the abrupt hold tripped the base guard. Stop: -2.5 Nm on joint 0. |
+|  |  | 4 |  | placed_off | 5.1 | 33 (+6) | 29 (-6) | 1 / 0 | Let go 4 mm off; red slid to 21 mm as the fingers opened. |
+|  |  | 5 |  | **stacked** | 5.0 | 29 (+10) | 29 (-5) | 1 / 0 |  |
+|  |  | 6 |  | **stacked** | 4.1 | 29 (-11) | 26 (+4) | 1 / 0 |  |
+|  |  | 7 |  | lost | 4.4 | 34 (-5) | 26 (+4) |  | Green hidden for 3 s. |
+|  |  | 8 |  | placed_off | 6.9 | 35 (-5) | 26 (+4) | 1 / 0 | First real retry from here; placed 11-14 mm off. |
+|  |  | 9 | 1 | **stacked** | 3.5 | 33 (-6) | 37 (+12) | 1 / 0 |  |
+|  |  | 10 | 1 | **stacked** | 5.5 | 33 (+10) | 28 (-12) | 1 / 0 |  |
+|  |  | 11 | 1 | **stacked** | 5.0 | 34 (-7) | 28 (+11) | 1 / 0 |  |
+|  |  | 12 | 1 | **stacked** | 5.5 | 22 (+11) | 23 (-12) | 1 / 0 |  |
+|  |  | 13 | 1 | safety |  | 25 (+1) | 35 (-1) | 1 / 0 | Green 35 cm: arm at full reach overshot; let go 13 mm off. Stop: -6.4 Nm on joint 1. |
+|  |  | 14 | 1 | safety |  | 24 (+1) | 35 (-6) |  | Green 35 cm: red's bottom caught green's top edge on the way in. Stop: 6.6 Nm on joint 1. |
+|  |  | 15 | 1 | safety |  | 24 (+1) | 35 (-6) |  | Red slid across green's top before the release. Stop: -2.4 Nm on joint 0. |
+|  |  | 16 | 2 | **stacked** | 12.2 | 34 (-5) | 36 (+11) | 1 / 0 | Red slid during the grab (up to 19 cm from its start). |
+|  |  | 17 | 2 | safety |  | 33 (+6) | 29 (-13) |  | Red slid out to 37 cm: grab short, finger on red. Stop: 6.4 Nm on joint 1. |
+|  |  | 18 | 2 | safety |  | 36 (-4) | 29 (+14) | 1 / 0 | Freeze snapped back mid-swing: base guard (led to the smooth stop, D). Stop: -2.5 Nm on joint 0. |
+|  |  | 19 | 2 | **stacked** | 9.4 | 26 (-1) | 37 (+13) | 1 / 0 | Red slid up to 14.5 cm during the grab. |
+|  |  | 20 | 2 | dropped | 6.8 | 31 (-1) | 37 (+13) |  | Closed on air. |
+|  |  | 21 | 2 | placed_off | 6.1 | 28 (-4) | 37 (+13) | 1 / 0 | Retry from here after #20. |
+| 6 (19:36) | D | 1 | 3 | safety |  | 36 (-8) | 36 (+8) |  | D (smooth stop). Both cubes 36 cm: grab short, finger on red; the Resume lift tripped too. Stop: 7.3 Nm on joint 1. |
+|  |  | 2 | 3 | **stacked** | 5.2 | 33 (-13) | 33 (+9) | 1 / 0 | Green not pushed. |
+|  |  | 3 | 3 | safety |  | 31 (+10) | 36 (-13) |  | Green pushed about 22 cm; fast base swing while carrying. Stop: 2.5 Nm on joint 0. |
+|  |  | 4 | 3 | safety |  | 31 (+10) | 31 (-3) |  | Green pushed and kept moving for 9 s. Stop: -2.3 Nm on joint 0. |
+|  |  | 5 | 3 | lost | 4.2 | 36 (-1) | 29 (-6) |  | Green hidden; red put back. |
+|  |  | 6 | 3 | dropped | 3.0 | 32 (-3) | 35 (+13) |  | Closed on air. |
+|  |  | 7 | 3 | **stacked** | 4.8 | 35 (+10) | 33 (-2) | 1 / 0 | Retry from here after #6. |
+|  |  | 8 | 3 | placed_off | 8.6 | 33 (+7) | 33 (-3) | 1 / 0 | Green pushed up to 11 cm; red ended on the table 14 cm away. |
+|  |  | 9 | 3 | placed_off | 12.4 | 34 (-7) | 26 (+1) | 1 / 0 | Followed green (moved up to 18.5 cm) and set red on it 14 mm off. |
+|  |  | 10 | 3 | safety |  | 30 (-4) | 33 (+10) |  | Green pushed about 22 cm; fast base swing. Stop: -2.3 Nm on joint 0. |
+|  |  | 11 | 3 | dropped | 10.9 | 34 (+2) | 32 (-6) |  | Closed on air during the carry. |
+|  |  | 12 | 3 | placed_unseen | 15.6 | 28 (-4) | 31 (+8) | 1 / 0 | Placed while the fingers hid red; on green. |
+| 7 (19:45) | D, no freeze | 1 | 5 | **stacked** | 3.9 | 29 (-8) | 31 (+12) |  | No freeze: the policy let go and held still on its own. |
+|  |  | 2 | 5 | safety |  | 32 (+11) | 37 (-11) |  | No freeze: pressed red into green (green 37 cm). The put-back lift had no reachable pose 36.5 cm out; runner exited; operator powered off. Stop: 6.5 Nm on joint 1. |
+| 8 (20:08) | D | 1 | R | safety |  | 34 (-8) | 34 (+7) |  | Both cubes 34 cm: grab short, finger on red; the Resume lift tripped too. Stop: 6.8 Nm on joint 1. |
+|  |  | 2 | R | **stacked** | 3.8 | 31 (-7) | 31 (+10) | 1 / 0 |  |
+|  |  | 3 | R | safety |  | 34 (+3) | 29 (+10) |  | Red knocked off the stack slid out to about 40 cm; the grab chased it. Stop: 6.6 Nm on joint 1. |
+|  |  | 4 | R | **stacked** | 4.6 | 28 (-2) | 29 (+10) | 1 / 0 |  |
+|  |  | 5 | R | **stacked** | 4.2 | 31 (+3) | 29 (+11) | 1 / 0 | Recovery: red knocked off the stack, stacked again. |
+|  |  | 6 | R | placed_off | 5.0 | 25 (-5) | 29 (+11) | 1 / 0 | Red ended on the table, next to green. |
+|  |  | 7 | R | **stacked** | 5.3 | 26 (-4) | 29 (+11) | 1 / 0 | Retry from here after #6. |
+|  |  | 8 | R | placed_off | 12.7 | 31 (-2) | 29 (+11) | 1 / 0 | Red slid 12.6 cm during the grab and green moved up to 20.6 cm during the carry; red set on green 13 mm off. |
+
+**What the real arm showed:**
+1. **The arm remount moved the calibration by about 5 mm.**
+   - Grabs with red to one side closed 14–29 mm above red's centre (the policy closes 10 mm above it). They also fell
+     9–18 mm short, toward the middle line.
+   - The open fingers then came down on red's top, and the joint-1 guard stopped the arm.
+   - After the new pick-measured correction, grabs closed within a few mm. Details under "Calibration".
+2. **After letting go, the place policy keeps moving.**
+   - It was trained in episodes that end 0.5 s after a stack, so it never learned to back off.
+   - On the real arm it re-grasps red (2026-10-31), keeps descending around the stack, or presses red into green.
+   - The patch's freeze (A) only engaged within 10 mm of green's centre, and let go whenever red's reading jumped. With
+     red set down 10–30 mm off, it didn't engage at all.
+   - "Release ends placing" (B–D) fixed this: no re-grasp from the stack after it.
+3. **The policy lets go 1–2 cm above green, while still moving down.**
+   - The opening fingers guide red onto green. Stopping the arm at the release itself dropped red unguided (2 of 5 off
+     the stack in a dry run). So the arm now stops once red reads down, or 0.4 s after the release.
+   - Red still often lands 10–21 mm off centre. In 7 of 9 placements it landed about 9 mm toward the arm.
+   - It isn't known yet whether red really overhangs, or the camera misreads stacked cubes. The camera already reads
+     stacked cubes 4–5 mm low, so it may misread their position too.
+4. **Cubes outside the trained range cause most stops.**
+   - The runner starts an attempt with red up to 36 cm out, but the policies were trained with cubes 20–34 cm out.
+   - At 34–40 cm, the grab dives short and a finger lands on red.
+   - With green 35–41 cm out, the arm reaches full stretch and overshoots.
+   - The scripted follow mode already refuses cubes outside 20–34 cm.
+5. **Lifting off a cube that a finger rests on trips the effort guard.**
+   - The guard compares efforts with the start of the move. When red carries part of the arm's weight, lifting off
+     reads as a 6.3–6.7 Nm collision on joint 1.
+   - When this happens during Go to rest, the runner exits and the idle arm sags onto the cube.
+   - Recovery that worked: slide the cube out while the arm holds, then Resume. Or open the gripper alone, then run
+     `scripts.to_rest`.
+6. **The 2.3 Nm base-joint limit trips on fast carries.**
+   - Following a green pushed 11–22 cm swings the base fast with red in the gripper: 3 stops.
+   - An abrupt stop of a fast swing tripped it twice; the smooth stop (D) fixed this.
+7. **Retry from where the arm is works:** 2 counted stacks in 4 uses, with no trip to the watch pose and the start
+   pose.
+8. **Both policies follow moving cubes.**
+   - The learned grab closed on red after it was slid up to 19 cm.
+   - The place policy set red on green after green moved 18–21 cm.
+
+**Calibration:**
+- **A pick check measured the remaining error at the grasp:**
+  - 4.8 mm (x +1.9, y +4.3 mm) with the 10-31 correction, which had read 0.3 mm on 2026-10-31;
+  - a new correction from 6 picks, (−3.8, +8.0) mm, replaced the 10-31 one, (−5.9, +4.2) mm;
+  - a 2-pick check then read 0.6 mm. Sessions 3–8 used the new correction.
+- **A full calibration run in the evening** (18 of 18 poses, 2.25 mm RMS) placed the camera 17 mm and 1.15° from
+  the 2026-10-20 calibration, relative to the arm. That fits the base having turned about 1° in the remount.
+- **The pick-measured correction fixes this at the middle of the workspace;** a full recalibration plus a pick check
+  would fix it everywhere.
+- **Not in the repository:** the 11-01 calibration files belong to that bench setup and are kept with the run
+  records. The arm and camera have since been moved, so every calibration here is out of date. Before the next
+  session:
+  1. `scripts.calibrate_camera pick --prior-current`;
+  2. `scripts.pick_bias --save`;
+  3. a 2-pick verification.
+
+**Changes (`rl/deploy.py` only):**
+- **Release ends placing.** When the place policy lets go of red over green (within 30 mm of its centre, at stack
+  height), the arm stops at the first of these:
+  - red reads down on green;
+  - red is hidden by the opening fingers;
+  - 0.4 s have passed (`RELEASE_SETTLE_S`).
+
+  It then stays still while the stacked rule is checked, for at most 1.2 s (`RELEASE_HOLD_S`; 3 s in the dry world).
+  The attempt ends either way:
+  - `stacked`;
+  - `placed_off`: the rule didn't pass;
+  - `placed_unseen`: red is still hidden, and the check from the watch pose decides.
+
+  Also:
+  - Readings that jump no longer release the freeze.
+  - Red hidden while frozen doesn't count as "lost".
+  - The stacked count while frozen needs a fresh reading of red (0.1 s old or less).
+- **Retry from here.** After a failed attempt (not a stack, not a safety stop), the arm rises straight up to 12 cm
+  (`RETRY_Z`). If red is seen on the table within 1 s and the arm is within the 20–34 cm ring, the next attempt starts
+  there. Otherwise it goes via the watch pose and the start pose. Training started the arm anywhere 8–14 cm above
+  that ring.
+- **Smooth stop.** The freeze, and the hold when a cube is out of view, now aim at the point where the streamed
+  motion comes to rest at the trajectory generator's own braking rate (`stop_point`).
+  - Before, they aimed at the measured position. The generator then reversed, and that jerk tripped the base guard.
+  - If the stop point would fail the floor or workspace checks, the generator's last checked point is used.
+- **Switches:** `--no-stack-freeze` turns off everything about the freeze and the release. `--no-retry-here` turns off
+  the retry.
+
+**Dry checks:**
+- **On the RTX 5090 PC, before each change went on the arm:**
+  - **B:** the first version stopped at the release itself: 4/5 with a 1.5 s hold, and 3/5 with 3 s (red dropped
+    unguided twice). Stopping once red is down: 4/5.
+  - **C:** 4/5; then 7/8 with the retry. A direct retry test on the simulated arm passed.
+  - **D:** 4/5. With 10% of camera frames dropped, there were 4 smooth holds and resumes, and no stops.
+- **On the lab PC, after merging into this repository** (the merged `rl/deploy.py` is identical to the one run on the
+  arm):
+  - **with the freeze:** 4/5 counted on 5 scenes (the RTX 5090 PC also got 4/5), and 9/10 on 10 scenes (one
+    `placed_off`), with no safety stops;
+  - **with `--no-stack-freeze`:** 5/5 on the same 5 scenes, but 5/10 on 10 scenes (4 timeouts and 1 drop).
+  - Earlier the same day, on the same 10 scenes, the 2026-10-31 code without any freeze also counted 5/10. The patch
+    as given (A) counted 10/10, although on the arm it let go of the stack in 6 of its 8 engagements.
+- **What the dry world can and can't show:**
+  - It reproduces the re-grasp: red set on green, then grabbed again until the timeout. That needs the real gripper's
+    timing.
+  - It doesn't reproduce the real arm's dive overshoot, its effort guards, or the placement bias.
+  - Run-to-run variation over 5–10 attempts is large, so small dry differences mean little.
+
+**Videos:**
+- [Demo video (83 s)](../media/mira_demo.mp4): a counted stack (session 5, attempt 9), red slid during the grab
+  (attempt 16), green pushed during the carry (session 6, attempt 9), the recovery clips (session 8, attempts 4–7),
+  the calibration run, and tracking alone. Speeds are stated in the captions.
+- GIFs: [stack](../media/rl_stack.gif), [red slid](../media/rl_slide_red.gif),
+  [recovery](../media/rl_recovery.gif), [calibration](../media/calibration.gif).
+- The robot camera's overlay is inset into the phone view. It was recorded separately, and its offset from the logs
+  drifted by several seconds, so each clip was lined up with the phone video on visible motion.
+- The calibration and tracking-only parts use the robot camera alone; there is no phone video of them.
+
+**Limitations:**
+- The re-grasp fix and "release ends placing" are runner rules, not learned behaviour.
+- The success rates come from small samples, while the runner was changing. There's no fixed-spot benchmark yet, and
+  no same-day comparison with the scripted controller.
+- The runner doesn't yet refuse to start with a cube outside the trained range, which caused most of the stops.
+- The base-joint effort guard stops fast carries when the target moves far.
+- Red lands about 9 mm toward the arm in most placements, for a reason not yet measured.
+- After a stop, lifting off a cube that a finger rests on can still end with the runner exiting.
+
+**Next:**
+1. **Start only with both cubes 20–34 cm from the base**, as follow mode already does. This would have prevented 11
+   of the 20 stops.
+2. **Put-back and rest after a stop:**
+   - if the straight lift has no reachable pose, fall back to a lower lift or a joint move;
+   - lift off a cube that a finger rests on gently: open first, then rise slowly.
+3. **Placement aim:** measure the 9 mm bias, then correct it, or teach the policy to set red lower before letting go.
+4. **Smoother carries:** a lower streaming acceleration in the place phase, within the range the policy was trained
+   with, or a deliberate decision about the 2.3 Nm limit.
+5. **Retrain the place policy** to release at stack height and back off, in episodes that continue after the stack.
+   Train it with the real gripper's closing profile and a slower dive near the table.
+6. **Recalibrate** when the arm is set up again.
+7. **A clean benchmark:** fixed cube spots, and 10+ attempts each for the scripted controller and the RL chain.
 
 ## Code map
 
