@@ -11,7 +11,7 @@
 reinforcement learning.**
 
 [Demo](#demo) · [Results](#results) · [How it works](#how-it-works) · [Setup](#setup) · [Running](#running) ·
-[Safety](#safety) · [Roadmap](#roadmap)
+[Safety](#safety) · [Roadmap](#roadmap) · [Project report](docs/PROJECT_REPORT.md)
 
 MIRA tracks objects in RGB-D video from their CAD models alone, with no AprilTags or fiducial markers. It closes the
 loop to a robot arm fast enough to keep up with a person moving things around. The task is reactive pick-and-place: a
@@ -38,36 +38,44 @@ Two controllers share the same perception and safety layer:
 - **Built for human interference:** a person can move, remove or knock over the cubes mid-task.
 - **Sim-to-real reinforcement learning:**
   - the policies stack in 72% of simulated trials at the real gripper speed;
-  - on the real arm, the learned grab picked up the cube in 14 of 14 attempts after the first 3 setup attempts;
-  - 8 of 12 real attempts ended stacked (4 by the strict rule), including 4 of the 6 in which a person moved the
-    cubes mid-task.
+  - trained only in simulation, they run unchanged on the real arm and stack in 3.5–5.5 s;
+  - they follow cubes moved by hand: the grab still stacked after red was slid up to 19 cm, and the placement set red
+    on a green moved 18–21 cm;
+  - on 2026-11-01, 19 counted stacks in 60 real attempts while the runner was being fixed. With the final code, 6 of
+    15 undisturbed attempts stacked, and 5 of 8 with both cubes in the trained range
+    ([all attempts](docs/rl/REPORT.md#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01)).
 - **Safety first:**
   - every joint path is checked against a workspace box using the arm's MuJoCo model;
   - tracking-error and collision (effort) guards while moving;
   - a finger-clearance check against the real gripper meshes.
-- **Tested on real hardware:** 10/10 stacks in a scripted reliability run, and 2.1 mm RMS camera-to-arm calibration.
+- **Tested on real hardware:**
+  - 10/10 stacks in a scripted reliability run;
+  - 2.1 mm RMS camera-to-arm calibration, and a pick-based check that measures the remaining error at the grasp.
 
 ## Demo
 
-| Learned policies on the real arm (real time) | Learned policies: green is pushed mid-carry (1.5× speed) |
+**[Demo video (83 s)](docs/media/mira_demo.mp4):** learned stacking, a cube slid by hand, a moved target, recovery
+after a knock-over, calibration, and tracking alone, from the 2026-11-01 session.
+
+| Learned policies on the real arm (real time) | The learned grab follows a cube slid by hand (1.5× speed) |
 |---|---|
-| [![The learned grab picks up the red cube and the learned placement stacks it on green](docs/media/rl_first_stack.gif)](docs/media/rl_session4.mp4) | [![A hand pushes the green cube while the arm carries red; the arm follows it and stacks red on green](docs/media/rl_moving_green.gif)](docs/media/rl_session5.mp4) |
-| Grab → scripted lift → placement, 4.7 s from the start of the grab. [Full session (2×)](docs/media/rl_session4.mp4): eight attempts, some with a person moving the cubes. | A person pushes green while the arm carries red; the placement policy follows it and stacks. [Full session (2×)](docs/media/rl_session5.mp4): all five attempts, including the main failure (re-grasping red after letting go). |
+| [![The learned grab picks up the red cube and the learned placement stacks it on green; an inset shows the robot camera's tracking overlay](docs/media/rl_stack.gif)](docs/media/mira_demo.mp4) | [![A hand slides the red cube around; the arm follows it, grabs it and stacks it on green](docs/media/rl_slide_red.gif)](docs/media/mira_demo.mp4) |
+| Grab → scripted lift → placement: a counted stack in 3.5 s from the start of the grab. Inset: the robot's camera with the live tracking overlay. | A hand slides red around during the grab. The grab follows it, then the placement stacks it (12.2 s). |
+| [![A hand pushes the green cube while the arm carries red; the arm follows it and stacks red on green](docs/media/rl_moving_green.gif)](docs/media/rl_session5.mp4) | [![A hand knocks red off a finished stack and the arm stacks it again](docs/media/rl_recovery.gif)](docs/media/mira_demo.mp4) |
+| Green is pushed while the arm carries red; the placement follows it and stacks (2026-10-31, 1.5× speed). [Full session (2×)](docs/media/rl_session5.mp4), including the re-grasp failure fixed on 2026-11-01. | A hand knocks red off a finished stack, and the always-on runner stacks it again in 4.2 s (real time). |
 
 The policies were trained only in simulation and run unchanged on the arm, from live markerless tracking
-([results](#results), [details](docs/rl/REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)).
+([results](#results), [every attempt](docs/rl/REPORT.md#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01)).
 
 | Scripted controller: follows the red cube as it's dragged (real time) | Scripted controller: full cycle while both cubes are moved (2× speed) |
 |---|---|
 | [![The arm hovers over the red cube and follows it as a hand drags it around](docs/media/follow_red.gif)](docs/media/follow_red.mp4) | [![The arm follows red, picks it, follows green while a hand moves it, and stacks red on green](docs/media/full_cycle.gif)](docs/media/full_cycle.mp4) |
 | [Full video](docs/media/follow_red.mp4) | [Full video](docs/media/full_cycle.mp4): follows red, picks it the moment it rests, follows green while it is moved, stacks, then re-stacks after the top cube is taken off |
 
-| Real camera: cubes placed close together, tracked live | ...and stacked by the arm |
-|---|---|
-| ![Live tracking of red and green cubes placed close together](docs/media/real_before_stack.jpg) | ![The arm has stacked red on green](docs/media/real_after_stack.jpg) |
-
-Live overlay from the D455: both cubes `TRACKING`, with their 6D poses drawn as wireframes, at about 12 ms of compute
-per frame (detect / track / check timings shown at the bottom).
+| Calibration: the arm shows the cube to the camera at 18 poses (10× speed) | Real camera: cubes placed close together, tracked live | ...and stacked by the arm |
+|---|---|---|
+| ![The arm holds the red cube up to the camera at a series of poses](docs/media/calibration.gif) | ![Live tracking of red and green cubes placed close together](docs/media/real_before_stack.jpg) | ![The arm has stacked red on green](docs/media/real_after_stack.jpg) |
+| The camera-to-arm calibration needs no markers: the arm picks red and holds it up at 18 poses (2.25 mm RMS in this run). | Live overlay from the D455: both cubes `TRACKING`, with their 6D poses drawn as wireframes, at about 12 ms of compute per frame (timings at the bottom). | |
 
 | Simulation: a hand picks up and moves a cube | A stack is knocked over | A cube is snatched away fast |
 |---|---|---|
@@ -87,7 +95,18 @@ frames and never reports a wrong pose as `TRACKING` ([details](docs/poc/README.m
 | Following a moving cube | **~0.25 s** lag; within 0.7 mm over a still cube |
 | Arm motion model (system ID) | Streamed motion on firmware 1.9.4 matches the simulator to **0.08°**, with about 0.13 s lag |
 | RL, simulation | **72%** stacked over 150 trials in which a simulated hand may move the cubes, at the real gripper speed; **66%** with calibration, tracker, friction and mass errors added ([docs/rl](docs/rl/REPORT.md)) |
-| RL, real arm (first test) | Learned grab: **14/14** picked up after the first 3 setup attempts, in about 2 s. **8 of 12** attempts ended stacked, and **4** met the strict rule (released and still for 0.5 s), in **4.7–7.3 s**. With a person moving the cubes mid-task: **4 of 6** ended stacked (without: 4 of 6). The main failure is re-grasping after the release ([details](docs/rl/REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)) |
+| RL, real arm, 2026-10-31 (first test) | Learned grab: **14/14** picked up after the first 3 setup attempts, in about 2 s. **8 of 12** attempts ended stacked, and **4** were counted, in **4.7–7.3 s**. With a person moving the cubes mid-task: **4 of 6** ended stacked (without: 4 of 6). The main failure: re-grasping after the release ([details](docs/rl/REPORT.md#first-real-arm-runs-of-the-rl-chain-rtx-5090-pc-2026-10-31)) |
+| RL, real arm, 2026-11-01 | **60 attempts, 19 counted stacks**, median **4.6 s** (3.5–12.2 s), while the runner was being fixed. Final code, no deliberate disturbance: **6 of 15** counted; with both cubes in the trained range at the start: **5 of 8**. **20** safety stops, 11 of them with a cube beyond the trained range. Re-grasping is now stopped by a runner rule ([all 60 attempts](docs/rl/REPORT.md#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01)) |
+
+**How to read the real-arm RL numbers:**
+- **A counted stack** meets the runner's full rule: red within 10 mm of green's centre, at stack height, upright,
+  released and still for 0.5 s.
+- **The trained range** is both cubes 20–34 cm from the arm's base. The in-range rule applies to successes and
+  failures alike.
+- **These are not a benchmark:** the runner changed between sessions, the samples are small, and cube spots weren't
+  fixed. A clean benchmark is on the [roadmap](#roadmap).
+- **The overall assessment,** with ratings by area and limitations, is in the
+  [project report](docs/PROJECT_REPORT.md).
 
 ## How it works
 
@@ -148,14 +167,18 @@ Every camera frame goes through three steps:
   Optional variations add calibration error, tracker bias, and friction and mass changes.
 - **On the arm:** `rl/deploy.py` runs the chain through the same safety wrapper and live perception. `--dry` runs it
   against a real-time MuJoCo world instead of the arm.
-- **First real-arm test (2026-10-31):**
-  - The policies ran unchanged.
-  - The first attempts showed where the real arm differs from the simulator: the gripper starts closing slowly, a
-    fast open overshoots, and fast dives overshoot near the table. Each difference is handled in the runner or the
-    arm wrapper.
-  - After that, the grab never missed, and when a person pushed green during the carry, the placement policy
-    followed it and stacked.
-  - The main remaining failure: the placement policy sets red on green, but often grabs it again after letting go.
+- **Real-arm tests (2026-10-31 and 2026-11-01), with the policies unchanged:**
+  - **The first attempts showed where the real arm differs from the simulator:**
+    - the gripper starts closing slowly;
+    - a fast open overshoots;
+    - fast dives overshoot near the table.
+
+    Each difference is handled in the runner or the arm wrapper.
+  - **The placement policy never learned to back off after a stack,** because its training episodes ended there. On
+    the arm it grabbed red again after letting go. Now, once it lets go of red over green, the runner stops the arm
+    and judges the stack ("release ends placing").
+  - **After a failed attempt, the next one starts from where the arm is** ("retry from here").
+  - **Stops brake smoothly,** at the trajectory generator's own rate.
 - **Docs:** [results and full history](docs/rl/REPORT.md), and
   [how to run the policies on the arm](docs/rl/DEPLOY_CHECKLIST.md).
 
@@ -246,26 +269,38 @@ sim/          MuJoCo bench scene (D455-like noise, hand, distractors), scenarios
 rl/           RL environments (grab, stack), PPO training and evaluation, system-ID fit, real-arm runner
 scripts/      live view, calibration, bring-up and stacking tests, follow mode, system ID, sim evaluation, camera tools
 assets/       cube colors, calibration, Trossen's MuJoCo arm model and table texture (BSD-3)
-docs/         demo media, perception proof of concept, calibration checks, reliability runs, RL report and
-              real-arm procedures, original project plan
+docs/         demo media, project report, perception proof of concept, calibration checks, reliability runs, RL report
+              and real-arm procedures, original project plan
 ```
 
 ## Roadmap
 
-- **RL on the real arm:**
-  - stop the placement policy from re-grasping red after letting go;
-  - train with the real gripper's closing profile;
-  - then run longer real-arm sessions.
-- **Disturbance benchmark:** success rate, time to stack, reaction time and smoothness while a person interferes,
-  comparing the scripted controller with RL.
-- **Fewer knock-overs:** knocking a cube over is the main remaining failure in simulation.
-- **Known issues:**
-  - The base-joint effort guard tripped during fast following on firmware 1.8.3. On 1.9.4, 100 Hz streaming is smooth
-    in system-ID tests, but the scripted follower hasn't been re-tested on it yet.
-  - Placement lands about 4 mm short in x, which points to a calibration bias. A pick-measured correction of
-    (−5.9, +4.2) mm is now applied (`scripts/pick_bias.py`); the scripted controller hasn't been re-checked with it
-    yet.
-  - Stacked cubes read 4–5 mm short; the fix is a stack prior in perception.
+The arm and camera have been moved to other projects (2026-11-01). The next hardware sessions will cover the following,
+in order. The full plan is in the
+[project report](docs/PROJECT_REPORT.md#future-plans-when-the-arm-is-ready-again).
+
+1. **Recalibrate:** the camera-to-arm calibration, then a pick check.
+2. **Runner robustness** (can be built and dry-tested before the arm is back):
+   - start only with both cubes in the trained range;
+   - a safer put-back after a safety stop;
+   - smoother carries, so fast follows don't trip the base-joint guard.
+3. **Placement accuracy:** red lands about 9 mm toward the arm. Measure whether the cause is real overhang or a
+   misread of stacked cubes, then correct it.
+4. **Retrain the placement policy** to release at stack height and back off by itself, replacing the runner's rule.
+   Train it with the real gripper's closing profile and a slower dive near the table.
+5. **A clean benchmark:**
+   - fixed cube spots;
+   - the scripted controller and the RL chain, 20+ trials each, on the same day with the same code;
+   - a disturbance protocol: red slid during the grab, green pushed during the carry, the stack knocked over.
+
+**Known issues:**
+- **The calibration is out of date.** The calibration in the repository predates the arm's move. On 2026-11-01, a
+  remount alone shifted it by about 5 mm.
+- **The base-joint effort guard (2.3 Nm) trips on fast carries,** when the target cube is pushed far.
+- **Follow mode** ran on firmware 1.9.4 on 2026-11-01, for about 2 minutes, with one tracking-error stop. The scripted
+  controller hasn't been re-benchmarked on 1.9.4.
+- **Stacked cubes read 4–5 mm short;** the fix is a stack prior in perception.
+- **In simulation, knocking a cube over** is the main remaining failure.
 
 The original project plan, and how each phase turned out, is in [docs/PLAN.md](docs/PLAN.md).
 

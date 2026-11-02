@@ -11,7 +11,7 @@ describes the system as it is now.
 | 1. Perception proof of concept | Done. 0 wrong `TRACKING` frames in 16,274 simulated frames ([poc/README.md](poc/README.md)), and live on the D455 at about 60 fps. |
 | 2. Arm interface and scripted baseline | Done. 10/10 stacks in a reliability run ([reliability](reliability/run_20261016_174531.md)), and 2.1 mm RMS camera-to-arm calibration (18 poses, picked by the arm). |
 | 3. RL in simulation | Done, with a different design from the one planned: a learned grab, a scripted lift, then a learned placement (PPO on CPU-parallel MuJoCo). 72% stacked at the real gripper speed ([rl/REPORT.md](rl/REPORT.md)). |
-| 4. Sim-to-real | Underway. First real-arm runs on 2026-10-31: 8 of 12 attempts ended stacked. The comparison with the scripted controller under disturbance is next. |
+| 4. Sim-to-real | Underway, paused while the arm is used by other projects. Real-arm runs on 2026-10-31 and 2026-11-01: 19 counted stacks in 60 attempts on 11-01, while the runner was being fixed ([rl/REPORT.md](rl/REPORT.md)). A clean benchmark against the scripted controller under disturbance is next ([PROJECT_REPORT.md](PROJECT_REPORT.md)). |
 
 ## Goal
 
