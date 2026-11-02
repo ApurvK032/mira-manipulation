@@ -38,7 +38,8 @@ Two controllers share the same perception and safety layer:
 - **Built for human interference:** a person can move, remove or knock over the cubes mid-task.
 - **Sim-to-real reinforcement learning:**
   - the policies stack in 72% of simulated trials at the real gripper speed;
-  - trained only in simulation, they run unchanged on the real arm and stack in 3.5–5.5 s;
+  - trained only in simulation, they run unchanged on the real arm. On 2026-11-01, undisturbed stacks took 3.5–5.5 s
+    from the start of the grab;
   - they follow cubes moved by hand: the grab still stacked after red was slid up to 19 cm, and the placement set red
     on a green moved 18–21 cm;
   - on 2026-11-01, 19 counted stacks in 60 real attempts while the runner was being fixed. With the final code, 6 of
@@ -105,8 +106,24 @@ frames and never reports a wrong pose as `TRACKING` ([details](docs/poc/README.m
   failures alike.
 - **These are not a benchmark:** the runner changed between sessions, the samples are small, and cube spots weren't
   fixed. A clean benchmark is on the [roadmap](#roadmap).
-- **The overall assessment,** with ratings by area and limitations, is in the
+- **Limitations, and the plan for the next hardware sessions,** are in the
   [project report](docs/PROJECT_REPORT.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/sysid_real_vs_sim_dark.png">
+  <img src="docs/media/sysid_real_vs_sim.png" width="100%" alt="Joint angles of the real arm and the simulator's replay of the same streamed targets overlap; the difference stays within about half a degree, 0.08 degrees RMSE">
+</picture>
+
+The simulator the policies trained in reproduces the real arm's streamed motion to 0.08° RMSE, with no fitted
+parameters (system ID on firmware 1.9.4).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/training_success_dark.png">
+  <img src="docs/media/training_success.png" width="100%" alt="Training success over environment steps for the grab policy (ending at 72 percent) and the placement policy (ending at 77 percent), with drops where training was made harder to match the real arm">
+</picture>
+
+Each policy is a chain of fine-tunes. Training was made harder step by step to match the real arm, and success dips
+at each step before recovering. Made with `pyt -m scripts.plot_figures`.
 
 ## How it works
 
@@ -236,6 +253,7 @@ Start the live perception first; everything else reads it.
 | Bring-up steps: read the arm, home, gripper, hover, pick | `scripts.check_arm`, `arm_home`, `gripper_test`, `hover_test`, `pick_test` |
 | Take the arm to rest from wherever it was left | `py -m scripts.to_rest` |
 | Simulation proof of concept (all scenarios, GIFs, plots) | `py -m scripts.eval_sim --gif` |
+| The README's system-ID and training figures (from logs in `runs/`) | `pyt -m scripts.plot_figures` |
 | Camera check, recording, replay, color tuning | `scripts.check_camera`, `record`, `run_live --source <dir>`, `tune_colors` |
 | Train an RL policy (`--env moving_cube` for the grab, `stack` for placement) | `pyt -m rl.train_ppo --env stack --steps 8e6 --envs 12 --name <run>` |
 | Evaluate grab → scripted lift → place in simulation | `pyt -m rl.eval_chained runs/rl/<grab>/model runs/rl/<place>/model --episodes 150` |
@@ -334,6 +352,13 @@ Mirrored networking is also required for the arm, whose UDP stream doesn't reach
 
 ## Acknowledgments
 
+- MIRA was developed in Professor Zhutian Chen's lab, on the lab's arms, cameras and computers.
+- The RL work was inspired by my friend [Srinivas's project](https://github.com/sri299792458/UWLab), Thunder:
+  sim-to-real cube stacking on a UR5e. Like Thunder, it follows UW Lab's
+  [OmniReset](https://uw-lab.github.io/UWLab/main/source/publications/omnireset/index.html) in starting training episodes
+  from several stages of the task.
+- Built with [Claude Code](https://claude.com/product/claude-code), which is credited as a co-author on many of the
+  commits.
 - [DLR-RM/3DObjectTracking](https://github.com/DLR-RM/3DObjectTracking) (M3T) and its Python bindings
   [pym3t](https://github.com/agimus-project/pym3t), cloned and built by `scripts/setup_env.sh`.
 - [Trossen Robotics](https://github.com/TrossenRobotics) for the WidowX AI driver, the MuJoCo model in

@@ -1,5 +1,7 @@
 # MIRA: project report
 
+MIRA was developed in Professor Zhutian Chen's lab, on the lab's arms, cameras and computers.
+
 **Status (2026-11-01):** the arm and the camera have been moved to other projects. This page records where MIRA
 stands, its limitations, and the plan for when the hardware is available again.
 
@@ -35,8 +37,8 @@ stands, its limitations, and the plan for when the hardware is available again.
   its reliability run.
 - **Sim-to-real reinforcement learning:** PPO in MuJoCo, against a system-identified model of the arm and the real
   gripper's speed. The policies run unchanged on the real arm. They:
-  - stack in 3.5–5.5 s;
-  - follow a cube slid by hand (stacked after red was moved up to 19 cm);
+  - stack red on green: on 2026-11-01, undisturbed stacks took 3.5–5.5 s from the start of the grab;
+  - follow a cube slid by hand (stacked in 12.2 s after red was moved up to 19 cm);
   - follow a moved target cube;
   - with the always-on runner, rebuild a stack after it is knocked over.
 - **Sim-to-real problems found on the hardware and fixed:**
@@ -59,23 +61,6 @@ stands, its limitations, and the plan for when the hardware is available again.
 A counted stack meets the runner's full rule: red within 10 mm of green's centre, at stack height, upright, released and
 still for 0.5 s. The real-arm numbers come from sessions in which the runner was being fixed. They are not a benchmark.
 Every attempt is listed in the [RL report](rl/REPORT.md#second-real-arm-day-release-retry-and-recalibration-rtx-5090-pc-2026-11-01).
-
-## Self-assessment (2026-11-01)
-
-**About 7.5/10 as a robotics portfolio project.** It is strong on systems engineering and on reporting what happened.
-The learned policies' success rate, and the rigour of the evaluation, hold it back.
-
-| Area | Rating (/10) | Why |
-|---|---|---|
-| Scope and systems engineering | 9 | The full stack on real hardware: markerless 6D tracking, calibration with a pick-based check, a safety layer, a reactive scripted controller, and sim-to-real RL |
-| Perception | 8.5 | About 60 fps; every pose checked against the image; no wrong poses in simulation; a live overlay that shows what the robot sees |
-| Scripted controller | 8 | 10/10 in its reliability run, with reactive following and retries. Not re-run as a benchmark on firmware 1.9.4 (follow mode ran on 2026-11-01) |
-| RL on the real arm | 6 | Policies trained only in simulation stack in 3.5–5.5 s and follow moving cubes. But success is moderate (19 counted stacks in 60 attempts while the runner was being fixed; 5 of 8 with the final code and the cubes in range), and several fixes live in the runner, not the policy |
-| Evaluation rigour | 5.5 | The code changed during the runs; small samples; no fixed-spot benchmark; no same-day comparison of the two controllers |
-| Documentation and honesty | 8.5 | Every attempt logged, failures explained, caveats stated |
-
-The target after the plans below is about 9/10: a clean benchmark, and a placement policy that releases and backs off
-by itself.
 
 ## Limitations
 

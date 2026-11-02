@@ -1452,4 +1452,5 @@ The cleanest numbers:
 | `rl/deploy.py`, `rl/dry_world.py`, `rl/check_deploy_obs.py` | The real-arm runner, its simulated stand-in, and the observation check |
 | `scripts/pick_bias.py`, `scripts/pick_check.py` | Measure and check the camera-to-arm xy correction by picking the cube |
 | `rl/make_sync_bundle.sh` | Packs uncommitted work, policies and logs to continue on another machine |
+| `scripts/plot_figures.py` | The README figures: the real arm against the simulator, and the training success of both policies |
 | `runs/` (not in the repository) | Checkpoints, training logs, evaluation and deployment logs |
